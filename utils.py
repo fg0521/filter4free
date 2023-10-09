@@ -15,10 +15,10 @@ def images2gif(dir,gif_name):
         os.path.join(dir,f"{gif_name}.gif"),
         save_all=True,
         append_images=images[1:],
-        duration=300,  # 每帧的持续时间（以毫秒为单位）
+        duration=100,  # 每帧的持续时间（以毫秒为单位）
         loop=0 # 设置为0表示无限循环
     )
 
 if __name__ == '__main__':
-    images2gif(dir='/Users/maoyufeng/slash/project/filter-simulation/test/film_mask/mse+hist',
-               gif_name='olympus')
+    images2gif(dir='test/film_mask',
+               gif_name='film_mask')

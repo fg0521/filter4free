@@ -38,6 +38,14 @@ class FilmMask(nn.Module):
 
 
 class FilmMask2(nn.Module):
+    """
+    去色罩
+    AdamW: lr=1e-4
+    loss: MSELoss+ChiSquareLoss
+    训练数据: 10张图片
+    训练通道: RGB
+    epoch: 100
+    """
     def __init__(self):
         super(FilmMask2, self).__init__()
         self.encoder = nn.Sequential(
@@ -70,7 +78,7 @@ class Olympus(nn.Module):
     loss: MSELoss+ChiSquareLoss
     训练数据: 64张图片
     训练通道: RGB
-    epoch: 150
+    epoch: 100
     """
     def __init__(self):
         super(Olympus, self).__init__()
@@ -99,13 +107,14 @@ class Olympus(nn.Module):
     def forward(self, x):
         # 编码器
         x1 = self.encoder(x)
+        print(x1.shape)
+
         # 中间层
         x2 = self.middle(x1)
+        print(x2.shape)
         # 解码器
         x3 = self.decoder(x2)
         return x3
-
-
 
 
 
@@ -200,7 +209,7 @@ class RGBUnet(nn.Module):
 
 
 if __name__ == '__main__':
-    model = FilmMask2()
+    model = Olympus()
     inp = torch.rand(1, 3, 512, 512)
     outp = model(inp)
     print(outp.shape)

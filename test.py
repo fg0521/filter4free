@@ -1,6 +1,8 @@
 import os
+import shutil
 
 import torch
+from PIL import Image
 from skimage import data
 import cv2
 import numpy as np
@@ -52,17 +54,9 @@ def hist(img):
 
 
 if __name__ == '__main__':
-    a = image2hsit('/Users/maoyufeng/slash/project/filter-simulation/test/film_mask/18.jpg',show=True)
-    # b = image2hsit('images/1696644460324322_mask.jpg',show=True)
-    # # hist('/Users/maoyufeng/Downloads/浓郁色调/PA044733.jpg')
-    # # hist('/Users/maoyufeng/Downloads/浓郁色调/PA044733_mask.jpg')
-    # print(a.shape)
-    # loss = ChiSquareLoss()
-    # a = torch.from_numpy(a).permute(1,0)
-    # b = torch.from_numpy(b).permute(1,0)
-    # l = loss(a,b)
-    # print(l)
-
-    im = cv2.imread('/Users/maoyufeng/Downloads/test17.jpg')[:,:,::-1]
-    cv2.imshow('test',im)
-    cv2.waitKey(0)
+    path = '/Users/maoyufeng/slash/dataset/color_mask/val'
+    for img_name in os.listdir(path):
+        if img_name.endswith('jpg'):
+            if '_mask' in img_name:
+                os.rename(os.path.join(path,img_name),
+                            os.path.join(path,img_name.replace('_mask','_org')))

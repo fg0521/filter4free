@@ -38,45 +38,6 @@ class ChiSquareLoss(nn.Module):
         chi_squared.requires_grad=True
         return chi_squared
 
-class ColorTransferLoss(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.bias = 1e-10
-        self.bins = 256
-        self.point = 0.6
-
-    def forward(self, hist1, hist2):
-        # batch_size,channel,W,H
-        assert hist1.size() == hist2.size(), "Histograms must have the same shape"
-        hist_loss = 0.
-        batch_size = hist1.size()[0]
-        mse_loss = F.mse_loss(input=hist1,target=hist2)
-        hist1=hist1*255
-        hist2=hist2*255
-        for i in range(batch_size):
-            r1 = torch.histc(hist1[i, 0, :, :], bins=self.bins, min=0, max=256)
-            g1 = torch.histc(hist1[i, 1, :, :], bins=self.bins, min=0, max=256)
-            b1 = torch.histc(hist1[i, 2, :, :], bins=self.bins, min=0, max=256)
-            h1 = torch.cat((r1, g1, b1), dim=0).unsqueeze(0)
-            h1 = h1 /h1.sum()
-
-            # print(h1.shape)
-            r2 = torch.histc(hist2[i, 0, :, :], bins=self.bins, min=0, max=256)
-            g2 = torch.histc(hist2[i, 1, :, :], bins=self.bins, min=0, max=256)
-            b2 = torch.histc(hist2[i, 2, :, :], bins=self.bins, min=0, max=256)
-            h2 = torch.cat((r2, g2, b2), dim=0).unsqueeze(0)
-            h2 = h2 /h2.sum()
-
-            # print(h2.shape)
-            chi_squared = torch.sum((h1 - h2) ** 2 / (h1 + h2 + self.bias))
-            hist_loss = hist_loss +chi_squared
-            # You can optionally normalize the chi_squared value by the number of bins.
-        hist_loss = hist_loss / batch_size
-        total_loss = (1-self.point)*hist_loss+mse_loss*self.point
-        total_loss.requires_grad=True
-        return total_loss
-
-
 
 class HistogramLoss(nn.Module):
     def __init__(self, num_bins=256, margin=1):
