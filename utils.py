@@ -2,10 +2,8 @@ import cv2
 import numpy as np
 from PIL import Image
 import os
-
 from matplotlib import pyplot as plt
 
-from loss import EMDLoss
 
 
 def images2gif(dir,gif_name):

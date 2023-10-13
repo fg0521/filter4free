@@ -38,14 +38,6 @@ class MaskDataset(Dataset):
             org_tensor = transform(Image.open(data['org_image']))
             goal_tensor = transform(Image.open(data['goal_image']))
         else:
-            # BGR -> RGB
-            # org_im = cv2.imread(data['image'])[:, :, ::-1]
-            # goal_im = cv2.imread(data['mask'])[:, :, ::-1]
-
-            # resize
-            # org_im = cv2.resize(org_im,(self.resize,self.resize))
-            # goal_im = cv2.resize(goal_im,(self.resize,self.resize))
-
             # resize
             org_im = Image.open(data['org_image']).resize((self.resize, self.resize))
             goal_im = Image.open(data['goal_image']).resize((self.resize, self.resize))

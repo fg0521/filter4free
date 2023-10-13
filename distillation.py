@@ -69,7 +69,10 @@ class DistillationLoss(nn.Module):
     def forward(self, student_output, teacher_output):
         student_probs = torch.softmax(student_output / self.temperature, dim=1)
         teacher_probs = torch.softmax(teacher_output / self.temperature, dim=1)
-        loss = nn.KLDivLoss(reduction = 'batchmean')(torch.log(student_probs), teacher_probs)
+        loss1 = nn.KLDivLoss(reduction = 'batchmean')(torch.log(student_probs), teacher_probs)
+        loss2 = nn.MSELoss()(torch.log(student_probs),teacher_probs)
+        loss = loss1+loss2
+        print(loss1.item(),loss2.item())
         return loss
 
 def train(data_path,training_channel,model_path,batch_size=8,lr=1e-4,temperature=3,epochs=100):
@@ -84,6 +87,7 @@ def train(data_path,training_channel,model_path,batch_size=8,lr=1e-4,temperature
     # 创建学生模型和蒸馏损失
     student_model = StudentModel()
     student_model = student_model.to(device)
+    student_model.load_state_dict(torch.load('checkpoints/olympus_dist/best.pth',map_location=device))
     distillation_criterion = DistillationLoss(temperature=temperature)
 
     # 定义优化器

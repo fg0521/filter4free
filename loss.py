@@ -101,13 +101,7 @@ class EMDLoss(nn.Module):
         total_loss.requires_grad = True
         return total_loss
 
-class MSE(nn.Module):
-    def forward(self,x,y):
-        # 计算平方差
-        squared_diff = (x - y)**2
-        # 在channel、w和h上求和，得到每个批次的MSE损失
-        mse_loss = torch.mean(squared_diff, dim=(1, 2, 3))
-        return mse_loss
+
 
 if __name__ == '__main__':
     # 创建两个示例直方图（这里使用随机数据，实际应用中需要根据你的需求计算直方图）

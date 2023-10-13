@@ -108,7 +108,6 @@ class Olympus(nn.Module):
         return x3
 
 
-
 class double_conv2d_bn(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, strides=1, padding=1):
         super(double_conv2d_bn, self).__init__()
@@ -175,27 +174,6 @@ class Unet(nn.Module):
         return outp
 
 
-class RGBUnet(nn.Module):
-    def __init__(self):
-        super(RGBUnet, self).__init__()
-        self.layer1_conv = double_conv2d_bn(3, 64)
-        self.layer2_conv = double_conv2d_bn(64, 128)
-        self.layer3_conv = double_conv2d_bn(128, 64)
-        self.layer5_conv = nn.Conv2d(64, 3, kernel_size=3,
-                                      stride=1, padding=1, bias=True)
-        self.deconv1 = deconv2d_bn(128, 64)
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, x):
-        conv1 = self.layer1_conv(x)
-        pool1 = F.max_pool2d(conv1, 2)
-        conv2 = self.layer2_conv(pool1)
-        convt1 = self.deconv1(conv2)
-        concat1 = torch.cat([convt1, conv1], dim=1)
-        conv3 = self.layer3_conv(concat1)
-        conv5 = self.layer5_conv(conv3)
-        outp = self.sigmoid(conv5)
-        return outp
 
 
 
