@@ -1,4 +1,4 @@
-from models import Olympus, FilmMask
+from models import FilterSimulation, FilmMask
 
 
 """
@@ -7,7 +7,7 @@ from models import Olympus, FilmMask
 字典包括：model（模型结构）、checkpoint（权重路径）、comment（说明）
 """
 model_cfg = {
-    'Olympus-RichColor': {'model': Olympus(),
+    'Olympus-RichColor': {'model': FilterSimulation(),
                            'checkpoint': 'checkpoints/olympus/rich-color/best.pth',
                            'comment': '奥林巴斯浓郁色彩'},
     'FilmMask': {'model': FilmMask(),

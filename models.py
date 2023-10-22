@@ -65,17 +65,17 @@ class FilmMask(nn.Module):
         x = torch.cat((r,g,b),dim=1)
         return x
 
-class Olympus(nn.Module):
+class FilterSimulation(nn.Module):
     """
-    奥林巴斯浓郁色调
+    滤镜模拟
     AdamW: lr=0.002
-    loss: MSELoss+ChiSquareLoss
+    loss: MSELoss+EMDLoss
     训练数据: 64张图片
     训练通道: RGB
     epoch: 100
     """
     def __init__(self):
-        super(Olympus, self).__init__()
+        super(FilterSimulation, self).__init__()
         self.encoder = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
@@ -178,7 +178,7 @@ class Unet(nn.Module):
 
 
 if __name__ == '__main__':
-    model = FilmMaskBase()
+    model = FilterSimulation()
     inp = torch.rand(4, 3, 512, 512)
     outp = model(inp)
     print(outp.shape)

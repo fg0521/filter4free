@@ -17,6 +17,7 @@ transform = transforms.Compose([
 
 
 class MaskDataset(Dataset):
+
     def __init__(self, dataset_path, mode, channel='rgb', resize=512):
         super(MaskDataset, self).__init__()
         self.mode = mode
