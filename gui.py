@@ -99,7 +99,9 @@ class FilmGUI(QMainWindow):
 
         # 左侧滚动区域用于选择滤镜
         filter_chosen = QScrollArea()
-        filter_chosen.setFixedWidth(110)
+        filter_chosen.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        filter_chosen.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        filter_chosen.setFixedWidth(108)
         self.image_input = QWidget()
 
         # 设置垂直分布
