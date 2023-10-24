@@ -4,7 +4,7 @@ import threading
 
 import cv2
 import torch
-from PIL import Image
+from PIL import Image, ImageEnhance
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QButtonGroup, QRadioButton, \
     QScrollArea, QPushButton, QListWidget, QListWidgetItem, QLabel, QMessageBox, QProgressBar
 from PyQt5.QtCore import Qt, QSize, pyqtSignal, QObject, QThread
@@ -108,7 +108,7 @@ class FilmGUI(QMainWindow):
         self.filter_button_group = QButtonGroup()
         # 存放按钮和对应的图片路径
         self.filter_buttons = []
-        filter_list = [i for i in os.listdir('src') if i.endswith("jpg") and 'hover' not in i]
+        filter_list = [i for i in os.listdir('src') if i.endswith("ORG.PNG")]
         for filter_name in filter_list:  # 创建20个按钮，模拟滚动效果
             button = QPushButton()
             button.setFixedHeight(80)  # 设置按钮高度
@@ -155,7 +155,7 @@ class FilmGUI(QMainWindow):
         for button, filter_name in self.filter_buttons:
             if button is clicked_button:
                 button.setStyleSheet("QPushButton {"
-                                     f"   border-image: url({os.path.join('src', filter_name.replace('.jpg', '_hover.jpg'))});"  # 背景颜色
+                                     f"   border-image: url({os.path.join('src', filter_name.replace('_ORG', ''))});"  # 背景颜色
                                      "}")
             else:
                 button.setStyleSheet("QPushButton {"
@@ -206,3 +206,12 @@ if __name__ == '__main__':
     window = FilmGUI()
     window.show()
     sys.exit(app.exec_())
+
+    # for img in os.listdir('/Users/maoyufeng/slash/fuji-chrome'):
+    #     if img.endswith('PNG'):
+    #         im = Image.open(f'/Users/maoyufeng/slash/fuji-chrome/{img}')
+    #         im = im.resize((100,100))
+    #         im.save(f'./src/{img}')
+    #         colorEnhancer = ImageEnhance.Color(im)
+    #         im = colorEnhancer.enhance(0.5)
+    #         im.save(f'./src/{img.replace(".PNG","_ORG.PNG")}')
