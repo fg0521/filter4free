@@ -1,4 +1,3 @@
-
 import os
 import sys
 import threading
@@ -13,7 +12,7 @@ from PyQt5.QtCore import Qt, QSize, pyqtSignal, QObject, QThread
 from PyQt5.QtGui import QPixmap, QIcon, QFont, QColor
 from functools import partial
 
-from infer import infer, init_args, image2block
+from infer import image2block
 from models import FilterSimulation
 
 from PyQt5.QtCore import pyqtProperty, QSize, Qt, QRectF, QTimer
@@ -264,7 +263,7 @@ class PercentProgressBar(QWidget):
 class PredictionWorker(QObject):
     update_progress = pyqtSignal(int)
 
-    def predict(self, image,pth):
+    def predict(self, image, pth):
         self.model = FilterSimulation()
         self.device = torch.device('cpu')
         # print(f'开始预测：{image}')
@@ -296,8 +295,8 @@ class PredictionWorker(QObject):
                     left = col * 512
                     top = row * 512
                     target.paste(Image.fromarray(out), (top, left))
-                end = int(t*cnt)
-                for num in range(start+1,end+1):
+                end = int(t * cnt)
+                for num in range(start + 1, end + 1):
                     self.update_progress.emit(num)
                     time.sleep(0.1)
                 start = end
@@ -310,14 +309,14 @@ class PredictionWorker(QObject):
 
 
 class PredictionThread(QThread):
-    def __init__(self, image,pth):
+    def __init__(self, image, pth):
         super().__init__()
         self.worker = PredictionWorker()
         self.image = image
-        self.pth=pth
+        self.pth = pth
 
     def run(self):
-        self.worker.predict(self.image,self.pth)
+        self.worker.predict(self.image, self.pth)
 
 
 class MyMainWindow(QMainWindow):
@@ -325,19 +324,19 @@ class MyMainWindow(QMainWindow):
         super().__init__()
         self.predict_image = ''
         self.default_filter = 'VIVID'
-        self.checkpoints_dict= {
-            "VIVID":'checkpoints/olympus/vivid/best.pth',
-            'A':'',
-            'CC':'',
-            'E':'',
-            'EB':'',
-            'NC':'',
-            'NH':'',
-            'NN':'',
-            'NS':'',
-            'S':'',
-            'STD':'',
-            'V':''
+        self.checkpoints_dict = {
+            "VIVID": 'checkpoints/olympus/vivid/best.pth',
+            'A': '',
+            'CC': '',
+            'E': '',
+            'EB': '',
+            'NC': '',
+            'NH': '',
+            'NN': 'checkpoints/fuji/velvia/best.pth',
+            'NS': '',
+            'S': '',
+            'STD': '',
+            'V': 'checkpoints/fuji/velvia/best.pth'
         }
         self.pth_name = self.checkpoints_dict[self.default_filter]
         self.set4layout()
@@ -350,7 +349,7 @@ class MyMainWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         self.setGeometry(100, 100, 600, 500)
-        self.setMinimumSize(600,500)
+        self.setMinimumSize(600, 500)
 
         # 整体设置垂直布局->上中下
         total_layout = QVBoxLayout()
@@ -382,10 +381,10 @@ class MyMainWindow(QMainWindow):
             button = QPushButton()
             button.setFixedHeight(80)  # 设置按钮高度
             button.setFixedWidth(80)
-            if filter_name.replace('_ORG.PNG','')==self.default_filter:
+            if filter_name.replace('_ORG.PNG', '') == self.default_filter:
                 button.setStyleSheet(
                     "QPushButton {"
-                    f"   border-image: url({os.path.join('src', filter_name.replace('_ORG',''))});"  # 背景颜色
+                    f"   border-image: url({os.path.join('src', filter_name.replace('_ORG', ''))});"  # 背景颜色
                     "}"
                 )
             else:
@@ -419,11 +418,10 @@ class MyMainWindow(QMainWindow):
         self.button_bar = QWidget()
         button_layout = QHBoxLayout()
 
-
         # self.progress_bar = QProgressBar()
         self.progress_bar = PercentProgressBar(self, showFreeArea=True,
-                                               backgroundColor=QColor(178,89,110),
-                                               borderColor=QColor(118,179,226),
+                                               backgroundColor=QColor(178, 89, 110),
+                                               borderColor=QColor(118, 179, 226),
                                                borderWidth=10)
         # self.raw_button = QPushButton()
         self.start_button = QPushButton()
@@ -455,7 +453,6 @@ class MyMainWindow(QMainWindow):
         self.setAcceptDrops(True)
 
         self.warning_box = QMessageBox()
-
 
     def set4stylesheet(self):
         # 标题区域
@@ -529,9 +526,9 @@ class MyMainWindow(QMainWindow):
         if self.predict_image:
             save_path = os.path.dirname(self.predict_image)
             name = '.'.join(os.path.basename(self.predict_image).split('.')[:-1]) + '_predict.jpg'
-            self.prediction_thread = PredictionThread(self.predict_image,self.pth_name)
+            self.prediction_thread = PredictionThread(self.predict_image, self.pth_name)
             self.prediction_thread.worker.update_progress.connect(self.update_progress_bar)
-            self.prediction_thread.finished.connect(lambda :self.display4image(os.path.join(save_path, name)))
+            self.prediction_thread.finished.connect(lambda: self.display4image(os.path.join(save_path, name)))
             self.start_button.setEnabled(False)
             self.prediction_thread.start()
         else:
@@ -550,7 +547,7 @@ class MyMainWindow(QMainWindow):
         for button, filter_name in self.filter_buttons:
             if button is clicked_button:
                 print(filter_name)
-                self.pth_name = self.checkpoints_dict[filter_name.replace('_ORG', '').replace('.PNG','')]
+                self.pth_name = self.checkpoints_dict[filter_name.replace('_ORG', '').replace('.PNG', '')]
                 print(self.pth_name)
                 button.setStyleSheet("QPushButton {"
                                      f"   border-image: url({os.path.join('src', filter_name.replace('_ORG', ''))});"  # 背景颜色

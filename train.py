@@ -68,6 +68,7 @@ class Trainer():
         train_loader = DataLoader(dataset=train_data, batch_size=batch_size, shuffle=True)
         val_loader = DataLoader(dataset=val_data, batch_size=batch_size, shuffle=True)
         self.model = self.model.to(self.device)
+        torch.load(strict=False)
         # 定义损失函数和优化器
         mse_fn = nn.MSELoss()
         emd_fn = EMDLoss()

@@ -10,7 +10,7 @@ from PIL import Image
 import torchvision.transforms as transforms
 
 transform = transforms.Compose([
-    transforms.Resize((512, 512)),
+    transforms.Resize((640, 640)),
     transforms.ToTensor(),
     # transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
@@ -18,7 +18,7 @@ transform = transforms.Compose([
 
 class MaskDataset(Dataset):
 
-    def __init__(self, dataset_path, mode, channel='rgb', resize=512):
+    def __init__(self, dataset_path, mode, channel='rgb', resize=640):
         super(MaskDataset, self).__init__()
         self.mode = mode
         self.dataset_path = dataset_path

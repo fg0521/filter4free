@@ -17,11 +17,12 @@ def laplacian(img, size=1):
 
 class Processor():
 
-    def __init__(self, mode='random'):
+    def __init__(self, mode='random',clip_size=512,skip_size=512):
         self.mode = mode  # random：随机裁剪  order：顺序裁剪
-        self.clip_size = 512
-        self.clip_num = 30
+        self.clip_size = clip_size
+        self.clip_num = 60
         self.max_clip_size = 1200
+        self.skip_size = skip_size
 
     def add_rotate(self, image: list):
         """
@@ -56,28 +57,27 @@ class Processor():
             sharpen_list = [laplacian(img) for img in image]
         return sharpen_list
 
-    def add_concat(self,image:list):
+    def add_concat(self, image: list):
         """
         图像拼接
         [[原图拼接图像],[目标图片拼接图像]]
         """
-        if int(math.sqrt(len(image[0])))**2 == len(image[0]):
-            h,w,c = image[0][0].shape
+        if int(math.sqrt(len(image[0]))) ** 2 == len(image[0]):
+            h, w, c = image[0][0].shape
             n = int(math.sqrt(len(image[0])))
             # 创建一个空白图像，用于 n x n 拼接
             result = np.zeros((w * n, h * n, 3), dtype=np.uint8)
             for each_image in image:
                 images = []
-                for i in range(0,len(each_image),n):
-                    images.append(each_image[i,i+n])
+                for i in range(0, len(each_image), n):
+                    images.append(each_image[i, i + n])
                 # 拼接图像
                 for i in range(n):
                     for j in range(n):
                         result[i * h:(i + 1) * h, j * w:(j + 1) * w] = images[i][j]
 
-
-    def run(self, input_path, output_path, splitting=True, rotate=True, sharpen=True,concat=True):
-        file_list = os.listdir(input_path)
+    def run(self, input_path, output_path, splitting=True, rotate=True, sharpen=True, concat=True, min_byte=50.0):
+        file_list = [i for i in os.listdir(input_path) if i.lower().endswith('_org.jpg')]
         if not os.path.exists(output_path):
             os.mkdir(output_path)
         for mode in ['train', 'val']:
@@ -85,68 +85,127 @@ class Processor():
                 os.mkdir(os.path.join(output_path, mode))
         # 对超大分辨率图片进行裁剪
         if splitting:
-            for org_img_name in tqdm(file_list,desc='数据增强'):
-                if org_img_name.lower().endswith('_org.jpg'):
-                    img_name = org_img_name.replace('_org', '')
-                    org_im = cv2.imread(os.path.join(input_path, org_img_name))
-                    goal_im = cv2.imread(os.path.join(input_path, img_name))
-                    assert org_im.shape == goal_im.shape, 'shapes are not equal!'
-                    H, W, C = org_im.shape
-                    if self.mode == 'random':
-                        # 每张图片随机裁剪 clip-num 次
-                        for i in range(self.clip_num):
+            for org_img_name in tqdm(file_list, desc='数据增强'):
+                img_name = org_img_name.replace('_org', '')
+                org_im = cv2.imread(os.path.join(input_path, org_img_name))
+                goal_im = cv2.imread(os.path.join(input_path, img_name))
+                if org_im.shape > goal_im.shape:
+                    org_im = cv2.resize(org_im, goal_im.shape[:2][::-1])
+                elif org_im.shape < goal_im.shape:
+                    goal_im = cv2.resize(goal_im, org_im.shape[:2][::-1])
+
+                H, W, C = org_im.shape
+                if self.mode == 'random':
+                    # 每张图片随机裁剪 clip-num 次
+                    for i in range(self.clip_num):
+                        goal_name = str(time.time()).replace('.', '')
+                        org_name = goal_name + '_org.jpg'
+                        goal_name = goal_name + '.jpg'
+                        mode = 'val' if i > int(self.clip_num * 0.9) else 'train'
+                        x, y = random.randint(0, W - self.clip_size), random.randint(0, H - self.clip_size)
+                        w, h = random.randint(self.clip_size, self.max_clip_size), random.randint(self.clip_size,
+                                                                                                  self.max_clip_size)
+                        ww = W if x + w > W else x + w
+                        hh = H if y + h > H else y + h
+
+                        org_im_split = org_im[y:hh, x:ww]
+                        goal_im_split = goal_im[y:hh, x:ww]
+
+                        if random.random() >= 0.5 and rotate:
+                            org_im_split, goal_im_split = self.add_rotate([org_im_split, goal_im_split])
+                        if random.random() >= 0.5 and sharpen:
+                            org_im_split, goal_im_split = self.add_sharpen([org_im_split, goal_im_split])
+                        cv2.imwrite(os.path.join(output_path, mode, org_name), org_im_split)
+                        cv2.imwrite(os.path.join(output_path, mode, goal_name), goal_im_split)
+
+                        if os.path.getsize(os.path.join(output_path, mode, org_name)) / 1024 < min_byte:
+                            os.remove(os.path.join(output_path, mode, org_name))
+                            os.remove(os.path.join(output_path, mode, goal_name))
+
+
+                elif self.mode == 'order':
+                    cnt, x = 0, 0
+                    while x <= W:
+                        ww = W if x+self.clip_size > W else x+self.clip_size
+                        y = 0
+                        while y <= H:
                             goal_name = str(time.time()).replace('.', '')
                             org_name = goal_name + '_org.jpg'
                             goal_name = goal_name + '.jpg'
-                            mode = 'val' if i > int(self.clip_num * 0.9) else 'train'
-                            x, y = random.randint(0, W - self.clip_size), random.randint(0, H - self.clip_size)
-                            w, h = random.randint(self.clip_size, self.max_clip_size), random.randint(self.clip_size,
-                                                                                                 self.max_clip_size)
-                            ww = W if x + w > W else x + w
-                            hh = H if y + h > H else y + h
-
-                            org_im_split = org_im[y:hh, x:ww]
-                            goal_im_split = goal_im[y:hh, x:ww]
-
+                            mode = 'val' if cnt % 10 == 0 else 'train'
+                            hh = H if y+self.clip_size > H else y+self.clip_size
+                            org_im_split = org_im[y:hh, x :ww]
+                            goal_im_split = goal_im[y:hh, x :ww]
                             if random.random() >= 0.5 and rotate:
                                 org_im_split, goal_im_split = self.add_rotate([org_im_split, goal_im_split])
                             if random.random() >= 0.5 and sharpen:
                                 org_im_split, goal_im_split = self.add_sharpen([org_im_split, goal_im_split])
 
-                            cv2.imwrite(os.path.join(output_path, mode, org_name), org_im_split)
-                            cv2.imwrite(os.path.join(output_path, mode, goal_name), goal_im_split)
-                    elif self.mode == 'order':
-                        cnt, x = 0, 1
-                        while x <= W:
-                            x += self.clip_size
-                            y = 0
-                            while y <= H:
-                                goal_name = str(time.time()).replace('.', '')
-                                org_name = goal_name + '_org.jpg'
-                                goal_name = goal_name + '.jpg'
-                                y += self.clip_size
-                                file = 'val' if cnt % 10 == 0 else 'train'
-                                ww = W if x > W else x
-                                hh = H if y > H else y
-                                org_im_split = org_im[y - self.clip_size:hh, x - self.clip_size:ww]
-                                goal_im_split = goal_im[y - self.clip_size:hh, x - self.clip_size:ww]
+                            # 进行图像像素对齐
+                            try:
+                                org_im_split = self.image_aligning(org_img=org_im_split,
+                                                                   goal_img=goal_im_split)
+                                HH,WW,_ = org_im_split.shape
+                                org_im_split = org_im_split[30:HH-30,30:WW-30]
+                                goal_im_split = goal_im_split[30:HH-30,30:WW-30]
+                                cv2.imwrite(os.path.join(output_path, mode, org_name), org_im_split)
+                                cv2.imwrite(os.path.join(output_path, mode, goal_name), goal_im_split)
+                                if os.path.getsize(os.path.join(output_path, mode, org_name)) / 1024 < min_byte:
+                                    os.remove(os.path.join(output_path, mode, org_name))
+                                    os.remove(os.path.join(output_path, mode, goal_name))
+                            except:
+                                pass
 
-                                if random.random() >= 0.5 and rotate:
-                                    org_im_split, goal_im_split = self.add_rotate([org_im_split, goal_im_split])
-                                if random.random() >= 0.5 and sharpen:
-                                    org_im_split, goal_im_split = self.add_sharpen([org_im_split, goal_im_split])
+                            cnt += 1
+                            y += self.skip_size
+                        x += self.skip_size
 
-                                cv2.imwrite(os.path.join(output_path, file, org_name), org_im_split)
-                                cv2.imwrite(os.path.join(output_path, file, goal_name), goal_im_split)
-                                cnt += 1
+    def image_aligning(self,org_img, goal_img):
+        # 读取两张图像
+        if isinstance(org_img,str):
+            image_org = cv2.imread(org_img)
+            image_goal = cv2.imread(goal_img)
+        elif isinstance(org_img,np.ndarray):
+            image_org = org_img
+            image_goal = goal_img
+        # 初始化SIFT检测器
+        sift = cv2.SIFT_create()
 
+        # 找到关键点和特征描述
+        keypoints1, descriptors1 = sift.detectAndCompute(image_org, None)
+        keypoints2, descriptors2 = sift.detectAndCompute(image_goal, None)
+
+        # 使用FLANN匹配器来匹配特征描述
+        FLANN_INDEX_KDTREE = 1
+        index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
+        search_params = dict(checks=50)
+        flann = cv2.FlannBasedMatcher(index_params, search_params)
+        matches = flann.knnMatch(descriptors1, descriptors2, k=2)
+
+        # 选择好的匹配
+        good_matches = []
+        for m, n in matches:
+            if m.distance < 0.7 * n.distance:
+                good_matches.append(m)
+
+        # 提取关键点的坐标
+        src_pts = np.float32([keypoints1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+        dst_pts = np.float32([keypoints2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+
+        # 使用RANSAC算法进行变换估计
+        M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+
+        # 使用得到的变换矩阵进行透视变换
+        image_org_aligned = cv2.warpPerspective(image_org, M, (image_goal.shape[1], image_goal.shape[0]))
+        return image_org_aligned
 
 
 if __name__ == '__main__':
-
-    p = Processor()
-    p.run(input_path='/Users/maoyufeng/Downloads/1',
-          output_path='/Users/maoyufeng/Downloads/test')
+    p = Processor(mode='order',clip_size=700,skip_size=500)
+    p.run(input_path='/Users/maoyufeng/Downloads/100_FUJI/jpg/nn',
+          output_path='/Users/maoyufeng/slash/dataset/train_dataset/fuji-nn-700',
+          sharpen=False,
+          min_byte=50.0)
 
     # im1 = cv2.imread('/Users/maoyufeng/slash/dataset/色罩/org/9.jpg')
     # im2 = cv2.imread('/Users/maoyufeng/slash/dataset/色罩/org/9_mask.jpg')
