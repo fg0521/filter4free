@@ -69,8 +69,8 @@ def image_concat(img_list, scaled_w=1000,vertical=True):
 
 
 if __name__ == '__main__':
-    # images2gif(dir='test/film_mask',
-    #            gif_name='film_mask')
+    images2gif(dir='test/fuji/velvia',
+               gif_name='velvia')
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test.jpg',show=True)
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/org.jpg')
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/small-rgb.jpg')
@@ -78,6 +78,6 @@ if __name__ == '__main__':
 
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test/test2.jpg',show=True)
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test/19416.jpg',show=True)
-    image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test/small-rgb-new2.jpg',show=True)
+    # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test/small-rgb-new2.jpg',show=True)
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test/small-rgb-new3.jpg',show=True)
 

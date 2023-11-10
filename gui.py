@@ -1,23 +1,17 @@
 import os
 import sys
-import threading
 import time
-
 import cv2
 import torch
-from PIL import Image, ImageEnhance
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QButtonGroup, QRadioButton, \
-    QScrollArea, QPushButton, QListWidget, QListWidgetItem, QLabel, QMessageBox, QProgressBar
-from PyQt5.QtCore import Qt, QSize, pyqtSignal, QObject, QThread
-from PyQt5.QtGui import QPixmap, QIcon, QFont, QColor
-from functools import partial
-
+from PIL import Image
+from PyQt5.QtWidgets import  QMainWindow, QButtonGroup, \
+    QScrollArea, QPushButton,  QLabel, QMessageBox,QApplication, QWidget, QHBoxLayout, QVBoxLayout
+from PyQt5.QtCore import  pyqtSignal, QObject, QThread, pyqtProperty, QSize, Qt, QRectF
 from infer import image2block
 from models import FilterSimulation
+from PyQt5.QtGui import QColor, QPainter, QFont,QPixmap
 
-from PyQt5.QtCore import pyqtProperty, QSize, Qt, QRectF, QTimer
-from PyQt5.QtGui import QColor, QPainter, QFont
-from PyQt5.QtWidgets import QApplication, QWidget, QHBoxLayout, QVBoxLayout, QSlider
+abs_path = os.getcwd()
 
 
 class PercentProgressBar(QWidget):
@@ -263,60 +257,53 @@ class PercentProgressBar(QWidget):
 class PredictionWorker(QObject):
     update_progress = pyqtSignal(int)
 
-    def predict(self, image, pth):
-        self.model = FilterSimulation()
-        self.device = torch.device('cpu')
-        # print(f'开始预测：{image}')
-        self.model.load_state_dict(
-            torch.load(pth, map_location=self.device))
-        self.model.to(self.device)
+    def predict(self,model,device, image, save_path,padding=16,patch_size=640,batch=8):
+        model = model.to(device)
         img = Image.open(image)
         # 对每个小块进行推理
         image_size = img.size
-        num_cols = image_size[1] // 512 + 1
         target = Image.new('RGB', image_size)
-        split_images, size_list = image2block(img, patch_size=512, padding=10)
+        split_images, size_list = image2block(img, patch_size=patch_size, padding=padding)
 
-        t = min(100 / len(split_images) * 8, 100)
+        t = min(100 / len(split_images) * batch, 100)
         start = 0
         cnt = 1
         with torch.no_grad():
-            for i in range(0, len(split_images), 8):
-                input = torch.vstack(split_images[i:i + 8])
-                output = self.model(input)
+            for i in range(0, len(split_images), batch):
+                input = torch.vstack(split_images[i:i + batch])
+                input = input.to(device)
+                output = model(input)
                 for k in range(output.shape[0]):
                     out = torch.clamp(output[k, :, :, :] * 255, min=0, max=255).byte().permute(1, 2,
                                                                                                0).detach().cpu().numpy()
-                    out = cv2.resize(out, size_list[i + k])
-                    out = out[10:size_list[i + k][1] - 10,
-                          10:size_list[i + k][0] - 10, :]
-                    row = (i + k) // num_cols
-                    col = (i + k) % num_cols
-                    left = col * 512
-                    top = row * 512
-                    target.paste(Image.fromarray(out), (top, left))
-                end = int(t * cnt)
+                    x, y, w, h = size_list[i + k]
+                    out = cv2.resize(out, (w, h))
+                    out = out[padding:h - padding, padding:w - padding, :]
+                    target.paste(Image.fromarray(out), (x, y))
+
+                end = min(100,int(t * cnt))
                 for num in range(start + 1, end + 1):
                     self.update_progress.emit(num)
                     time.sleep(0.1)
                 start = end
                 cnt += 1
-
-        save_path = os.path.dirname(image)
-        name = '.'.join(os.path.basename(image).split('.')[:-1]) + '_predict.jpg'
-        target.save(os.path.join(save_path, name))
+        target.save(save_path)
         # print(f'保存到：{os.path.join(save_path, name)}')
 
 
 class PredictionThread(QThread):
-    def __init__(self, image, pth):
+    def __init__(self, image, model,device,save_path):
         super().__init__()
         self.worker = PredictionWorker()
         self.image = image
-        self.pth = pth
+        self.model = model
+        self.device =device
+        self.save_path = save_path
 
     def run(self):
-        self.worker.predict(self.image, self.pth)
+        self.worker.predict(model=self.model,device=self.device,
+                            image=self.image,
+                            save_path=self.save_path)
 
 
 class MyMainWindow(QMainWindow):
@@ -324,21 +311,29 @@ class MyMainWindow(QMainWindow):
         super().__init__()
         self.predict_image = ''
         self.default_filter = 'VIVID'
+        self.model = FilterSimulation()
+        if torch.cuda.is_available():
+            self.device = torch.device('cuda:0')
+        elif torch.backends.mps.is_available():
+            self.device = torch.device('mps')
+        else:
+            self.device = torch.device('cpu')
+
         self.checkpoints_dict = {
-            "VIVID": 'checkpoints/olympus/vivid/best.pth',
+            "VIVID": os.path.join(abs_path,'checkpoints','olympus','vivid','best.pth'),
             'A': '',
             'CC': '',
             'E': '',
             'EB': '',
             'NC': '',
             'NH': '',
-            'NN': 'checkpoints/fuji/velvia/best.pth',
+            'NN': os.path.join(abs_path,'checkpoints','fuji','nn','best.pth'),
             'NS': '',
             'S': '',
             'STD': '',
-            'V': 'checkpoints/fuji/velvia/best.pth'
+            'V': os.path.join(abs_path,'checkpoints','fuji','velvia','best.pth')
         }
-        self.pth_name = self.checkpoints_dict[self.default_filter]
+        self.model.load_state_dict(state_dict=torch.load(self.checkpoints_dict[self.default_filter],map_location=self.device))
         self.set4layout()
         self.set4stylesheet()
 
@@ -384,13 +379,13 @@ class MyMainWindow(QMainWindow):
             if filter_name.replace('_ORG.PNG', '') == self.default_filter:
                 button.setStyleSheet(
                     "QPushButton {"
-                    f"   border-image: url({os.path.join('src', filter_name.replace('_ORG', ''))});"  # 背景颜色
+                    f"   border-image: url({os.path.join(abs_path,'src', filter_name.replace('_ORG', ''))});"  # 背景颜色
                     "}"
                 )
             else:
                 button.setStyleSheet(
                     "QPushButton {"
-                    f"   border-image: url({os.path.join('src', filter_name)});"  # 背景颜色
+                    f"   border-image: url({os.path.join(abs_path,'src', filter_name)});"  # 背景颜色
                     "}"
                 )
             self.filter_buttons.append((button, filter_name))
@@ -482,12 +477,12 @@ class MyMainWindow(QMainWindow):
         self.start_button.setFixedHeight(60)
         self.start_button.setFixedWidth(60)
         self.start_button.setStyleSheet("QPushButton {"
-                                        "border-image: url(src/start.png) 0 0 0 0 stretch stretch;"  # 设置背景图片的路径
+                                        f"border-image: url({os.path.join(abs_path,'src','start.png')}) 0 0 0 0 stretch stretch;"  # 设置背景图片的路径
                                         f"border-radius: 30px;"  # 设置圆角半径为按钮宽度的一半
                                         "}"
                                         "QPushButton::hover"
                                         "{"
-                                        "border-image : url(src/start2.png) 0 0 0 0 stretch stretch;"
+                                        f"border-image : url({os.path.join(abs_path,'src','start2.png')}) 0 0 0 0 stretch stretch;"
                                         f"border-radius: 30px;"  # 设置圆角半径为按钮宽度的一半
                                         "}"
                                         )
@@ -524,11 +519,13 @@ class MyMainWindow(QMainWindow):
 
     def start_prediction(self):
         if self.predict_image:
-            save_path = os.path.dirname(self.predict_image)
-            name = '.'.join(os.path.basename(self.predict_image).split('.')[:-1]) + '_predict.jpg'
-            self.prediction_thread = PredictionThread(self.predict_image, self.pth_name)
+            save_dir = os.path.dirname(self.predict_image)
+            name = '.'.join(os.path.basename(self.predict_image).split('.')[:-1]) + f'_{self.default_filter}.jpg'
+            save_path = os.path.join(save_dir,name)
+
+            self.prediction_thread = PredictionThread(self.predict_image,self.model,self.device,save_path)
             self.prediction_thread.worker.update_progress.connect(self.update_progress_bar)
-            self.prediction_thread.finished.connect(lambda: self.display4image(os.path.join(save_path, name)))
+            self.prediction_thread.finished.connect(lambda: self.display4image(save_path))
             self.start_button.setEnabled(False)
             self.prediction_thread.start()
         else:
@@ -546,15 +543,16 @@ class MyMainWindow(QMainWindow):
     def choose4filters(self, clicked_button):
         for button, filter_name in self.filter_buttons:
             if button is clicked_button:
-                print(filter_name)
-                self.pth_name = self.checkpoints_dict[filter_name.replace('_ORG', '').replace('.PNG', '')]
-                print(self.pth_name)
+                self.default_filter = filter_name.replace('_ORG', '').replace('.PNG', '')
+                pth_name = self.checkpoints_dict[self.default_filter]
+                self.model.load_state_dict(
+                    state_dict=torch.load(pth_name, map_location=self.device))
                 button.setStyleSheet("QPushButton {"
-                                     f"   border-image: url({os.path.join('src', filter_name.replace('_ORG', ''))});"  # 背景颜色
+                                     f"   border-image: url({os.path.join(abs_path,'src', filter_name.replace('_ORG', ''))});"  # 背景颜色
                                      "}")
             else:
                 button.setStyleSheet("QPushButton {"
-                                     f"   border-image: url({os.path.join('src', filter_name)});"  # 背景颜色
+                                     f"   border-image: url({os.path.join(abs_path,'src', filter_name)});"  # 背景颜色
                                      "}")
 
 
