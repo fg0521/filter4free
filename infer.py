@@ -5,12 +5,12 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image
-from torchvision import transforms
+# from torchvision import transforms
 from tqdm import tqdm
-from conf import model_cfg
 import argparse
-from models import FilterSimulation, UNet, UNet2
-from utils import image_concat
+from models import FilterSimulation, UNet, UNet2, FilmMask
+
+# from utils import image_concat
 
 seed = 2333
 torch.manual_seed(seed)
@@ -21,10 +21,10 @@ torch.backends.cudnn.deterministic = True  #
 
 
 def image2block_copy(image, patch_size=640, padding=16):
-    transform = transforms.Compose([
-        transforms.Resize((patch_size + 2 * padding, patch_size + 2 * padding)),
-        transforms.ToTensor(),
-    ])
+    # transform = transforms.Compose([
+    #     transforms.Resize((patch_size + 2 * padding, patch_size + 2 * padding)),
+    #     transforms.ToTensor(),
+    # ])
     width, height = image.size
     patches, size_list = [], []
     # 拆分图片
@@ -39,7 +39,8 @@ def image2block_copy(image, patch_size=640, padding=16):
                                        borderType=cv2.BORDER_REPLICATE)  # cv2.BORDER_REFLECT_101
             # 记录原始大小，方便后续resize
             size_list.append((patch.shape[1], patch.shape[0]))  # h,w
-            patch = transform(Image.fromarray(patch)).unsqueeze(0)
+            # patch = transform(Image.fromarray(patch)).unsqueeze(0)
+            patch = torch.from_numpy(cv2.resize(patch,(patch_size,patch_size))/255.0).permute(2,0,1).unsqueeze(0).float()
             # patch = cv2.resize(np.array(patch), (patch_size + 2 * padding, patch_size + 2 * padding))
             # patch = torch.from_numpy(np.clip((rgb2lab(patch / 255.0) + [0, 128, 128]) / [100, 255, 255], 0, 1)).permute(2, 0, 1).to(torch.float32).unsqueeze(0)
             patches.append(patch)
@@ -47,10 +48,10 @@ def image2block_copy(image, patch_size=640, padding=16):
 
 
 def image2block(image, patch_size=640, padding=16):
-    transform = transforms.Compose([
-        transforms.Resize((patch_size, patch_size)),
-        transforms.ToTensor(),
-    ])
+    # transform = transforms.Compose([
+    #     transforms.Resize((patch_size, patch_size)),
+    #     transforms.ToTensor(),
+    # ])
     patches, size_list = [], []
 
     image1 = cv2.copyMakeBorder(np.array(image), padding, padding, padding, padding,
@@ -65,7 +66,8 @@ def image2block(image, patch_size=640, padding=16):
             patch = np.array(image.crop((x1-padding, y1-padding, x2, y2)))
             cv2.rectangle(image1,(x1-padding, y1-padding, x2, y2),(0,0,255),3)
             size_list.append((x1-padding,y1-padding,patch.shape[1],patch.shape[0]))  # x,y,w,h
-            patch = transform(Image.fromarray(patch)).unsqueeze(0)
+            # patch = transform(Image.fromarray(patch)).unsqueeze(0)
+            patch = torch.from_numpy(cv2.resize(patch,(patch_size,patch_size))/255.0).permute(2,0,1).unsqueeze(0).float()
             patches.append(patch)
 
 
@@ -125,17 +127,17 @@ if __name__ == '__main__':
     else:
         device = torch.device('cpu')
     # model = UNet()
-    model = FilterSimulation()
-    pth = 'checkpoints/fuji/velvia/epoch199.pth'
+    model = FilmMask()
+    pth = 'static/checkpoints/film-mask/best.pth'
     model.load_state_dict(torch.load(pth, map_location=device))
     model.to(device)
     model.eval()
     st = time.time()
-    target = infer(image='/Users/maoyufeng/Downloads/100_FUJI/jpg/velvia/DSCF0108_org.jpg', model=model)
+    target = infer(image='/Users/maoyufeng/Downloads/film-mask.jpg', model=model)
     print(time.time()-st)
     # print(target.size)
     # target.show()
-    target.save('/Users/maoyufeng/Downloads/test5.jpg')
+    target.save('/Users/maoyufeng/Downloads/filmmask.jpg')
     # org = Image.open('/Users/maoyufeng/Downloads/10.4/浓郁色调/PA044711_org.jpg')
     # img = Image.open('/Users/maoyufeng/Downloads/10.4/浓郁色调/PA044711.jpg')
     # res = image_concat(img_list=[org,target,img])

@@ -76,7 +76,7 @@ class Processor():
                     for j in range(n):
                         result[i * h:(i + 1) * h, j * w:(j + 1) * w] = images[i][j]
 
-    def run(self, input_path, output_path, splitting=True, rotate=True, sharpen=True, concat=True, min_byte=50.0):
+    def run(self, input_path, output_path, splitting=True, rotate=True, sharpen=True, concat=True,align=False, min_byte=50.0):
         file_list = [i for i in os.listdir(input_path) if i.lower().endswith('_org.jpg')]
         if not os.path.exists(output_path):
             os.mkdir(output_path)
@@ -142,19 +142,21 @@ class Processor():
                                 org_im_split, goal_im_split = self.add_sharpen([org_im_split, goal_im_split])
 
                             # 进行图像像素对齐
-                            try:
-                                org_im_split = self.image_aligning(org_img=org_im_split,
-                                                                   goal_img=goal_im_split)
-                                HH,WW,_ = org_im_split.shape
-                                org_im_split = org_im_split[30:HH-30,30:WW-30]
-                                goal_im_split = goal_im_split[30:HH-30,30:WW-30]
-                                cv2.imwrite(os.path.join(output_path, mode, org_name), org_im_split)
-                                cv2.imwrite(os.path.join(output_path, mode, goal_name), goal_im_split)
-                                if os.path.getsize(os.path.join(output_path, mode, org_name)) / 1024 < min_byte:
-                                    os.remove(os.path.join(output_path, mode, org_name))
-                                    os.remove(os.path.join(output_path, mode, goal_name))
-                            except:
-                                pass
+                            if align:
+                                try:
+                                    org_im_split = self.image_aligning(org_img=org_im_split,
+                                                                       goal_img=goal_im_split)
+                                    HH,WW,_ = org_im_split.shape
+                                    org_im_split = org_im_split[30:HH-30,30:WW-30]
+                                    goal_im_split = goal_im_split[30:HH-30,30:WW-30]
+                                except:
+                                    pass
+                            cv2.imwrite(os.path.join(output_path, mode, org_name), org_im_split)
+                            cv2.imwrite(os.path.join(output_path, mode, goal_name), goal_im_split)
+                            if os.path.getsize(os.path.join(output_path, mode, org_name)) / 1024 < min_byte:
+                                os.remove(os.path.join(output_path, mode, org_name))
+                                os.remove(os.path.join(output_path, mode, goal_name))
+
 
                             cnt += 1
                             y += self.skip_size
@@ -201,9 +203,9 @@ class Processor():
 
 
 if __name__ == '__main__':
-    p = Processor(mode='order',clip_size=700,skip_size=500)
-    p.run(input_path='/Users/maoyufeng/Downloads/100_FUJI/jpg/nn',
-          output_path='/Users/maoyufeng/slash/dataset/train_dataset/fuji-nn-700',
+    p = Processor(mode='order',clip_size=700,skip_size=300)
+    p.run(input_path='/Users/maoyufeng/slash/dataset/org_dataset/film-mask',
+          output_path='/Users/maoyufeng/slash/dataset/train_dataset/film-mask',
           sharpen=False,
           min_byte=50.0)
 

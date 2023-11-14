@@ -32,7 +32,7 @@ else:
 
 
 teacher_model = Olympus()
-teacher_model.load_state_dict(torch.load('checkpoints/olympus/best.pth',map_location=device))
+teacher_model.load_state_dict(torch.load('static/checkpoints/olympus/best.pth', map_location=device))
 teacher_model = teacher_model.to(device=device)
 teacher_model.eval()
 
@@ -87,7 +87,7 @@ def train(data_path,training_channel,model_path,batch_size=8,lr=1e-4,temperature
     # 创建学生模型和蒸馏损失
     student_model = StudentModel()
     student_model = student_model.to(device)
-    student_model.load_state_dict(torch.load('checkpoints/olympus_dist/best.pth',map_location=device))
+    student_model.load_state_dict(torch.load('static/checkpoints/olympus_dist/best.pth', map_location=device))
     distillation_criterion = DistillationLoss(temperature=temperature)
 
     # 定义优化器
@@ -144,4 +144,4 @@ def train(data_path,training_channel,model_path,batch_size=8,lr=1e-4,temperature
 if __name__ == '__main__':
     train(data_path='/Users/maoyufeng/slash/dataset/olympus浓郁色彩',
           training_channel='rgb',
-          model_path='checkpoints/olympus_dist')
+          model_path='static/checkpoints/olympus_dist')

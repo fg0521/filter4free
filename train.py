@@ -157,5 +157,5 @@ if __name__ == '__main__':
 
     trainer =Trainer(data_path='/Users/maoyufeng/Downloads/1',
                      model=FilterSimulation(),
-                     model_path='checkpoints/fuji/provia')
+                     model_path='static/checkpoints/fuji/provia')
     trainer.train()
