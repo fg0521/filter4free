@@ -19,11 +19,11 @@ pip                   23.3.1
 PyQt3D                5.15.5
 PyQt5                 5.15.7
 PyQt5-sip             12.11.0
-PyQtChart             5.15.6
-PyQtDataVisualization 5.15.5
-PyQtNetworkAuth       5.15.5
-PyQtPurchasing        5.15.5
-PyQtWebEngine         5.15.6
+PyQtChart             5.15.6  ？
+PyQtDataVisualization 5.15.5  ？
+PyQtNetworkAuth       5.15.5  ？
+PyQtPurchasing        5.15.5  ？
+PyQtWebEngine         5.15.6  ？
 requests              2.31.0
 setuptools            65.5.0
 torch                 1.13.0
@@ -56,6 +56,34 @@ python -m nuitka \
 ###### 打包命令：
 
 ```python
-nuitka --standalone --lto=no --report=report.xml --mingw64 --show-progress --show-memory --enable-plugin=pyqt5 --plugin-enable=torch --plugin-enable=numpy --output-dir=dist --include-data-dir=./static/=./static/ --windows-icon-from-ico=app.ico main.py
+nuitka --standalone --lto=no --report=report.xml --mingw64 --show-progress --show-memory --enable-plugin=pyqt5 --
+plugin-enable=torch --plugin-enable=numpy --output-dir=dist --include-data-dir=./static/=./static/ --windows-icon-from-ico=app.ico main.py
+```
+
+#### MacOS Inter x86
+
+###### 包依赖：
+
+```python
+certifi            2023.7.22
+charset-normalizer 3.3.2
+idna               3.4
+imageio            2.32.0
+Nuitka             1.8.6
+numpy              1.25.2
+opencv-python      4.6.0.66
+ordered-set        4.1.0
+Pillow             10.0.1
+pip                23.3.1
+PyQt5              5.15.2
+PyQt5-Qt5          5.15.11
+PyQt5-sip          12.13.0
+requests           2.31.0
+setuptools         58.1.0
+torch              1.13.0
+torchvision        0.14.0
+typing_extensions  4.8.0
+urllib3            2.0.7
+zstandard          0.22.0
 ```
 
