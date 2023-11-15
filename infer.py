@@ -127,17 +127,17 @@ if __name__ == '__main__':
     else:
         device = torch.device('cpu')
     # model = UNet()
-    model = FilmMask()
-    pth = 'static/checkpoints/film-mask/best.pth'
+    model = FilterSimulation()
+    pth = 'static/checkpoints/fuji/velvia/best.pth'
     model.load_state_dict(torch.load(pth, map_location=device))
     model.to(device)
     model.eval()
     st = time.time()
-    target = infer(image='/Users/maoyufeng/Downloads/film-mask.jpg', model=model)
+    target = infer(image='/Users/maoyufeng/Downloads/DSC02789.jpg', model=model)
     print(time.time()-st)
     # print(target.size)
     # target.show()
-    target.save('/Users/maoyufeng/Downloads/filmmask.jpg')
+    target.save('/Users/maoyufeng/Downloads/2332323.jpg', quality=100)
     # org = Image.open('/Users/maoyufeng/Downloads/10.4/浓郁色调/PA044711_org.jpg')
     # img = Image.open('/Users/maoyufeng/Downloads/10.4/浓郁色调/PA044711.jpg')
     # res = image_concat(img_list=[org,target,img])

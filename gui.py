@@ -4,13 +4,21 @@ import time
 import cv2
 import torch
 from PIL import Image
+from PyQt5 import QtCore
 from PyQt5.QtWidgets import QMainWindow, QButtonGroup, \
-    QScrollArea, QPushButton, QLabel, QMessageBox, QApplication, QWidget, QHBoxLayout, QVBoxLayout
+    QScrollArea, QPushButton, QLabel, QMessageBox, QApplication, QWidget, QHBoxLayout, QVBoxLayout, QSlider
 from PyQt5.QtCore import pyqtSignal, QObject, QThread, pyqtProperty, QSize, Qt, QRectF
 from infer import image2block
-from models import FilterSimulation,FilmMask
+from models import FilterSimulation, FilmMask
 from PyQt5.QtGui import QColor, QPainter, QFont, QPixmap
+import yaml
+
 file_path = os.path.dirname(__file__)
+
+with open(os.path.join(file_path,'static','config.yaml'),'r') as f:
+    STYLE = yaml.load(f, Loader=yaml.FullLoader)[sys.platform]
+
+print(STYLE)
 
 class PercentProgressBar(QWidget):
     MinValue = 0
@@ -128,7 +136,7 @@ class PercentProgressBar(QWidget):
         # 绘制文字
         painter.save()
         painter.setPen(self.TextColor)
-        painter.setFont(QFont('Arial', 25))
+        painter.setFont(QFont('Arial', STYLE['progress_bar']['font_size']))
         strValue = '{}%'.format(int(self.Value / (self.MaxValue - self.MinValue)
                                     * 100)) if self.ShowPercent else str(self.Value)
         painter.drawText(QRectF(-radius, -radius, radius * 2,
@@ -255,7 +263,7 @@ class PercentProgressBar(QWidget):
 class PredictionWorker(QObject):
     update_progress = pyqtSignal(int)
 
-    def predict(self, model, device, image, save_path, padding=16, patch_size=640, batch=8):
+    def predict(self, model, device, image, save_path, quality=100, padding=16, patch_size=640, batch=8):
         model = model.to(device)
         img = Image.open(image)
         # 对每个小块进行推理
@@ -285,30 +293,34 @@ class PredictionWorker(QObject):
                     time.sleep(0.05)
                 start = end
                 cnt += 1
-        target.save(save_path)
+        target.save(save_path, quality=quality)
         # print(f'保存到：{os.path.join(save_path, name)}')
 
 
 class PredictionThread(QThread):
-    def __init__(self, image, model, device, save_path):
+    def __init__(self, image, model, device, save_path, image_quality):
         super().__init__()
         self.worker = PredictionWorker()
         self.image = image
         self.model = model
         self.device = device
         self.save_path = save_path
+        self.quality = image_quality
 
     def run(self):
         self.worker.predict(model=self.model, device=self.device,
                             image=self.image,
-                            save_path=self.save_path)
+                            save_path=self.save_path,
+                            quality=self.quality)
 
 
 class MyMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.predict_image = ''
+        self.save_path =''
         self.default_filter = 'FJ-V'
+        self.quality_num = 100
         self.model = FilterSimulation()
         if torch.cuda.is_available():
             self.device = torch.device('cuda:0')
@@ -318,43 +330,51 @@ class MyMainWindow(QMainWindow):
             self.device = torch.device('cpu')
 
         self.checkpoints_dict = {
-            'FilmMask': os.path.join(file_path,'static','checkpoints','film-mask','best.pth'),  # 去色罩
+            'FilmMask': os.path.join(file_path, 'static', 'checkpoints', 'film-mask', 'best.pth'),  # 去色罩
             # Olympus Filters
-            "OM-VIVID": os.path.join(file_path,'static','checkpoints','olympus','vivid','best.pth'),  # 浓郁色彩
-            "OM-SoftFocus": os.path.join(file_path,'static','checkpoints','olympus','soft-focus','best.pth'),  # 柔焦
-            "OM-SoftLight": os.path.join(file_path,'static','checkpoints','olympus','soft-light','best.pth'),  # 柔光
-            "OM-Nostalgia": os.path.join(file_path,'static','checkpoints','olympus','nostalgia','best.pth'),  # 怀旧颗粒
-            "OM-Stereoscopic": os.path.join(file_path,'static','checkpoints','olympus','stereoscopic','best.pth'),  # 立体
+            "OM-VIVID": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'vivid', 'best.pth'),  # 浓郁色彩
+            "OM-SoftFocus": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'soft-focus', 'best.pth'),  # 柔焦
+            "OM-SoftLight": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'soft-light', 'best.pth'),  # 柔光
+            "OM-Nostalgia": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'nostalgia', 'best.pth'),
+            # 怀旧颗粒
+            "OM-Stereoscopic": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'stereoscopic', 'best.pth'),
+            # 立体
             # Fuji Filters
-            'FJ-A': os.path.join(file_path,'static','checkpoints','fuji','acros','best.pth'),  # ACROS
-            'FJ-CC': os.path.join(file_path,'static','checkpoints','fuji','classic-chrome','best.pth'),  # CLASSIC CHROME
-            'FJ-E': os.path.join(file_path,'static','checkpoints','fuji','eterna','best.pth'),  # ETERNA
-            'FJ-EB': os.path.join(file_path,'static','checkpoints','fuji','eterna-bleach-bypass','best.pth'), # ETERNA BLEACH BYPASS
-            'FJ-NC': os.path.join(file_path,'static','checkpoints','fuji','classic-neg','best.pth'),  # CLASSIC Neg.
-            'FJ-NH': os.path.join(file_path,'static','checkpoints','fuji','pro-neg-hi','best.pth'),  # PRO Neg.Hi
-            'FJ-NN': os.path.join(file_path,'static','checkpoints','fuji','nostalgic-neg','best.pth'),  # NOSTALGIC Neg.
-            'FJ-NS': os.path.join(file_path,'static','checkpoints','fuji','pro-neg-std','best.pth'),  # PRO Neg.Std
-            'FJ-S': os.path.join(file_path,'static','checkpoints','fuji','astia','best.pth'),  # ASTIA
-            'FJ-STD': os.path.join(file_path,'static','checkpoints','fuji','provia','best.pth'),  # PROVIA
-            'FJ-V': os.path.join(file_path,'static','checkpoints','fuji','velvia','best.pth'),  # VELVIA
+            'FJ-A': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'acros', 'best.pth'),  # ACROS
+            'FJ-CC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-chrome', 'best.pth'),
+            # CLASSIC CHROME
+            'FJ-E': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'eterna', 'best.pth'),  # ETERNA
+            'FJ-EB': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'eterna-bleach-bypass', 'best.pth'),
+            # ETERNA BLEACH BYPASS
+            'FJ-NC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-neg', 'best.pth'),
+            # CLASSIC Neg.
+            'FJ-NH': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'pro-neg-hi', 'best.pth'),  # PRO Neg.Hi
+            'FJ-NN': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'nostalgic-neg', 'best.pth'),
+            # NOSTALGIC Neg.
+            'FJ-NS': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'pro-neg-std', 'best.pth'),  # PRO Neg.Std
+            'FJ-S': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'astia', 'best.pth'),  # ASTIA
+            'FJ-STD': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'provia', 'best.pth'),  # PROVIA
+            'FJ-V': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'velvia', 'best.pth'),  # VELVIA
             # Richo Filters
-            'R-Std': os.path.join(file_path,'static','checkpoints','richo','std','best.pth'),  # 标准
-            'R-Vivid': os.path.join(file_path,'static','checkpoints','richo','vivid','best.pth'),  # 鲜艳
-            'R-Single': os.path.join(file_path,'static','checkpoints','richo','single','best.pth'),  # 单色
-            'R-SoftSingle': os.path.join(file_path,'static','checkpoints','richo','soft-single','best.pth'),  # 软单色
-            'R-StiffSingle': os.path.join(file_path,'static','checkpoints','richo','stiff-single','best.pth'),  # 硬单色
-            'R-ContrastSingle': os.path.join(file_path,'static','checkpoints','richo','contrastSingle','best.pth'),  # 高对比对黑白
-            'R-Neg': os.path.join(file_path,'static','checkpoints','richo','neg','best.pth'),  # 负片
-            'R-Pos': os.path.join(file_path,'static','checkpoints','richo','pos','best.pth'),  # 正片
-            'R-Nostalgia': os.path.join(file_path,'static','checkpoints','richo','nostalgia','best.pth'),  # 怀旧
-            'R-HDR': os.path.join(file_path,'static','checkpoints','richo','hdr','best.pth'),  # HDR
-            'R-Pos2Neg': os.path.join(file_path,'static','checkpoints','richo','pos2neg','best.pth'),  # 正负逆冲
+            'R-Std': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'std', 'best.pth'),  # 标准
+            'R-Vivid': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'vivid', 'best.pth'),  # 鲜艳
+            'R-Single': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'single', 'best.pth'),  # 单色
+            'R-SoftSingle': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'soft-single', 'best.pth'),  # 软单色
+            'R-StiffSingle': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'stiff-single', 'best.pth'),
+            # 硬单色
+            'R-ContrastSingle': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'contrastSingle', 'best.pth'),
+            # 高对比对黑白
+            'R-Neg': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'neg', 'best.pth'),  # 负片
+            'R-Pos': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'pos', 'best.pth'),  # 正片
+            'R-Nostalgia': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'nostalgia', 'best.pth'),  # 怀旧
+            'R-HDR': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'hdr', 'best.pth'),  # HDR
+            'R-Pos2Neg': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'pos2neg', 'best.pth'),  # 正负逆冲
             # Canon Filters
-            'Canon': os.path.join(file_path,'static','checkpoints','canon','best.pth'),  # 佳能
+            'Canon': os.path.join(file_path, 'static', 'checkpoints', 'canon', 'best.pth'),  # 佳能
             # Sony Filters
-            'Sony': os.path.join(file_path,'static','checkpoints','sony','best.pth'),  # 索尼
+            'Sony': os.path.join(file_path, 'static', 'checkpoints', 'sony', 'best.pth'),  # 索尼
             # Nikon Filters
-            'Nikon': os.path.join(file_path,'static','checkpoints','nikon','best.pth'),  # 尼康
+            'Nikon': os.path.join(file_path, 'static', 'checkpoints', 'nikon', 'best.pth'),  # 尼康
         }
         self.model.load_state_dict(
             state_dict=torch.load(self.checkpoints_dict[self.default_filter], map_location=self.device))
@@ -367,17 +387,18 @@ class MyMainWindow(QMainWindow):
         # 创建一个中心的 QWidget 用于容纳垂直布局
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        self.setGeometry(100, 100, 600, 500)
-        self.setMinimumSize(600, 500)
+        self.setGeometry(STYLE['window']['x'], STYLE['window']['y'],
+                         STYLE['window']['width'],STYLE['window']['height'])
+        self.setMinimumSize(STYLE['window']['width'],STYLE['window']['height'])
 
         # 整体设置垂直布局->上中下
-        total_layout = QVBoxLayout()
-        total_layout.setSpacing(0)
-        total_layout.setContentsMargins(0, 0, 0, 0)
+        window_layout = QVBoxLayout()
+        window_layout.setSpacing(0)
+        window_layout.setContentsMargins(0, 0, 0, 0)
 
         # 上布局：设置标题为 Filter For Free
         self.title = QLabel('Filter For Free')
-        total_layout.addWidget(self.title, 5)
+        window_layout.addWidget(self.title, STYLE['title']['grid1'])
 
         # 中布局：设置滤镜选择、图片输入、按钮、进度条
         # 中布局设置水平布局
@@ -395,23 +416,23 @@ class MyMainWindow(QMainWindow):
         self.filter_button_group = QButtonGroup()
         # 存放按钮和对应的图片路径
         self.filter_buttons = []
-        filter_list = sorted([i for i in os.listdir(os.path.join(file_path,'static','src')) if i.endswith("ORG.png")])
+        filter_list = sorted([i for i in os.listdir(os.path.join(file_path, 'static', 'src')) if i.endswith("ORG.png")])
         for filter_name in filter_list:  # 根据图片动态创建按钮
             button = QPushButton()
-            button.setFixedHeight(80)  # 设置按钮高度
-            button.setFixedWidth(80)
+            button.setFixedWidth(STYLE['filter_button']['width'])
+            button.setFixedHeight(STYLE['filter_button']['height'])  # 设置按钮高度
 
             if filter_name.replace('-ORG.png', '') == self.default_filter:
                 button.setStyleSheet(
-                    "QPushButton {"
-                    f"   border-image: url({os.path.join(file_path,'static','src', filter_name.replace('-ORG', ''))});"  # 背景颜色
-                    "}"
+                    "QPushButton { border-image: url("
+                    + os.path.join(file_path, 'static', 'src', filter_name.replace('-ORG', '')).replace('\\', '/')
+                    + "); }"  # 背景颜色
                 )
             else:
                 button.setStyleSheet(
-                    "QPushButton {"
-                    f"   border-image: url({os.path.join(file_path,'static','src', filter_name)});"  # 背景颜色
-                    "}"
+                    "QPushButton { border-image: url("
+                    + os.path.join(file_path, 'static', 'src', filter_name).replace('\\', '/')
+                    + "); }"  # 背景颜色
                 )
             if not os.path.exists(self.checkpoints_dict[filter_name.replace('-ORG.png', '')]):
                 button.setEnabled(False)
@@ -423,7 +444,7 @@ class MyMainWindow(QMainWindow):
 
         all_filters.setLayout(filter_layout)
         self.filters.setWidget(all_filters)
-        content_layout.addWidget(self.filters, 2)
+        content_layout.addWidget(self.filters, STYLE['filter_button']['grid2'])
         # 右边为预测区域，设置垂直布局
         prediction = QWidget()
         predict_layout = QVBoxLayout()
@@ -434,9 +455,10 @@ class MyMainWindow(QMainWindow):
         self.img_input = QLabel('Drag Image Here')
         # self.img_input.setAcceptDrops(True) # 启用 QLabel 接受拖放事件
 
-        predict_layout.addWidget(self.img_input, 4)
+        predict_layout.addWidget(self.img_input, STYLE['image_input']['grid3'])
 
         # 按钮和进度条，设置水平布局
+        self.quality_slider = QSlider(Qt.Horizontal, self)
         self.button_bar = QWidget()
         button_layout = QHBoxLayout()
 
@@ -448,30 +470,31 @@ class MyMainWindow(QMainWindow):
         # self.raw_button = QPushButton()
         self.start_button = QPushButton()
         self.start_button.clicked.connect(self.start_prediction)
-        self.blank = QWidget()
+        self.quality_slider.valueChanged.connect(self.set_quality)
+        # self.blank = QWidget()
 
-        button_layout.addWidget(self.blank)
+        button_layout.addWidget(self.quality_slider)
         button_layout.addWidget(self.progress_bar)
         # button_layout.addWidget(self.raw_button)
         button_layout.addWidget(self.start_button)
 
         self.button_bar.setLayout(button_layout)
-        predict_layout.addWidget(self.button_bar, 1)
+        predict_layout.addWidget(self.button_bar, STYLE['start_button']['grid3'])
 
         prediction.setLayout(predict_layout)
 
-        content_layout.addWidget(prediction, 5)
+        content_layout.addWidget(prediction, STYLE['image_input']['grid2'])
 
         filters_images.setLayout(content_layout)
 
-        total_layout.addWidget(filters_images, 15)
+        window_layout.addWidget(filters_images, STYLE['filter_button']['grid1'])
 
         # 底部留白区域
         self.bottom = QWidget()
-        total_layout.addWidget(self.bottom, 1)
+        window_layout.addWidget(self.bottom, STYLE['bottom']['grid1'])
 
         # 设置中心窗口的布局
-        central_widget.setLayout(total_layout)
+        central_widget.setLayout(window_layout)
         self.setAcceptDrops(True)
 
         self.warning_box = QMessageBox()
@@ -480,14 +503,34 @@ class MyMainWindow(QMainWindow):
         # 标题区域
         font1 = QFont()
         font1.setBold(True)
-        font1.setPointSize(74)
+        font1.setPointSize(STYLE['title']['font_size'])
         self.title.setAlignment(Qt.AlignCenter)
         self.title.setFont(font1)
         self.title.setStyleSheet("background-color: #76b3e2;"
                                  "color: #e9edf7;")
 
-        # 按钮、进度条区域
+        # 滑块、按钮、进度条区域
         self.button_bar.setStyleSheet("background-color: #e9edf7;")
+        self.quality_slider.setMinimum(1)
+        self.quality_slider.setMaximum(100)
+        self.quality_slider.setSingleStep(1)
+        self.quality_slider.setValue(100)
+        self.quality_slider.setStyleSheet(
+            "QSlider::groove:horizontal {"
+            "border: 1px solid gray;"
+            "height: 5px;"
+            "left: 10px;"
+            "right: 20px;}"
+            "QSlider::handle:horizontal {"
+            "border: 1px solid gray;"
+            "background:white;"
+            "border-radius: 7px;"
+            "width: 14px;"
+            "height:14px;"
+            "margin: -6px;}"
+            "QSlider::add-page:horizontal{background: #3a3c42;}"
+            "QSlider::sub-page:horizontal{background: #b2596f; }"
+        )
 
         # 图片输入框
         font2 = QFont()
@@ -499,19 +542,21 @@ class MyMainWindow(QMainWindow):
         self.img_input.setFont(font2)
 
         # 按钮
-        self.progress_bar.setFixedWidth(60)
-        self.progress_bar.setFixedHeight(60)
-        self.start_button.setFixedHeight(60)
-        self.start_button.setFixedWidth(60)
-        self.start_button.setStyleSheet("QPushButton {"
-                                        f"border-image: url({os.path.join(file_path,'static','src','start.png')}) 0 0 0 0 stretch stretch;"  # 设置背景图片的路径
-                                        f"border-radius: 30px;"  # 设置圆角半径为按钮宽度的一半
-                                        "}"
-                                        "QPushButton::hover"
-                                        "{"
-                                        f"border-image : url({os.path.join(file_path,'static','src','start2.png')}) 0 0 0 0 stretch stretch;"
-                                        f"border-radius: 30px;"  # 设置圆角半径为按钮宽度的一半
-                                        "}"
+        self.progress_bar.setFixedWidth(STYLE['progress_bar']['width'])
+        self.progress_bar.setFixedHeight(STYLE['progress_bar']['height'])
+        self.start_button.setFixedWidth(STYLE['start_button']['width'])
+        self.start_button.setFixedHeight(STYLE['start_button']['height'])
+
+        self.start_button.setStyleSheet("QPushButton { "
+                                        + "border-image: url("
+                                        + os.path.join(file_path, 'static', 'src', 'start.png').replace('\\',
+                                                                                                        '/') + ") 0 0 0 0 stretch stretch;"  # 设置背景图片的路径
+                                        + "border-radius: 30px; }"  # 设置圆角半径为按钮宽度的一半
+                                        + "QPushButton::hover {"
+                                        + "border-image : url("
+                                        + os.path.join(file_path, 'static', 'src', 'start2.png').replace('\\',
+                                                                                                         '/') + ") 0 0 0 0 stretch stretch;"
+                                        + "border-radius: 30px; }"  # 设置圆角半径为按钮宽度的一半
                                         )
         # self.start_button.setFont(font3)
 
@@ -535,24 +580,37 @@ class MyMainWindow(QMainWindow):
         for url in e.mimeData().urls():
             if url.isLocalFile():
                 self.predict_image = url.toLocalFile()
+                self.save_path = ''
                 self.display4image(self.predict_image)
 
     def display4image(self, image):
-        # print(f'显示：{image}')
+        # 显示QLabel图片
         pixmap = QPixmap(image)
         self.img_input.setPixmap(pixmap.scaled(self.img_input.size(), transformMode=Qt.SmoothTransformation))
         self.img_input.setAlignment(Qt.AlignCenter)
-        # 开始预测函数
+
+    def set_quality(self):
+        # 设置输出图像的质量
+        self.quality_num = self.quality_slider.value()
+
+    def resizeEvent(self, e):
+        # 改变窗口大小后QLabel中的图片重新加载
+        if e.type() == QtCore.QEvent.Resize:
+            print(self.save_path)
+            if os.path.exists(self.save_path):
+                self.display4image(self.save_path)
+            elif os.path.exists(self.predict_image):
+                self.display4image(self.predict_image)
 
     def start_prediction(self):
         if self.predict_image:
             save_dir = os.path.dirname(self.predict_image)
             name = '.'.join(os.path.basename(self.predict_image).split('.')[:-1]) + f'_{self.default_filter}.jpg'
-            save_path = os.path.join(save_dir, name)
-
-            self.prediction_thread = PredictionThread(self.predict_image, self.model, self.device, save_path)
+            self.save_path = os.path.join(save_dir, name)
+            self.prediction_thread = PredictionThread(self.predict_image, self.model, self.device, self.save_path,
+                                                      self.quality_num)
             self.prediction_thread.worker.update_progress.connect(self.update_progress_bar)
-            self.prediction_thread.finished.connect(lambda: self.display4image(save_path))
+            self.prediction_thread.finished.connect(lambda: self.display4image(self.save_path))
             self.start_button.setEnabled(False)
             self.prediction_thread.start()
         else:
@@ -572,20 +630,22 @@ class MyMainWindow(QMainWindow):
             if button is clicked_button:
                 self.default_filter = filter_name.replace('-ORG', '').replace('.png', '')
                 pth_name = self.checkpoints_dict[self.default_filter]
-                if self.default_filter=='FilmMask':
+                if self.default_filter == 'FilmMask':
                     self.model = FilmMask()
                 else:
                     self.model = FilterSimulation()
                 self.model.load_state_dict(
                     state_dict=torch.load(pth_name, map_location=self.device))
-                button.setStyleSheet("QPushButton {"
-                                     f"   border-image: url({os.path.join(file_path,'static','src', filter_name.replace('-ORG', ''))});"  # 背景颜色
-                                     "}")
-
+                button.setStyleSheet("QPushButton { border-image: url("
+                                     + os.path.join(file_path, 'static', 'src',
+                                                    filter_name.replace('-ORG', '')).replace('\\', '/')
+                                     + ");}"  # 背景颜色
+                                     )
             else:
-                button.setStyleSheet("QPushButton {"
-                                     f"   border-image: url({os.path.join(file_path,'static','src', filter_name)});"  # 背景颜色
-                                     "}")
+                button.setStyleSheet("QPushButton { border-image: url("
+                                     + os.path.join(file_path, 'static', 'src', filter_name).replace('\\', '/')
+                                     + ");}"  # 背景颜色
+                                     )
 
 
 if __name__ == '__main__':
