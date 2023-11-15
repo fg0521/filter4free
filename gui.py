@@ -18,7 +18,6 @@ file_path = os.path.dirname(__file__)
 with open(os.path.join(file_path,'static','config.yaml'),'r') as f:
     STYLE = yaml.load(f, Loader=yaml.FullLoader)[sys.platform]
 
-print(STYLE)
 
 class PercentProgressBar(QWidget):
     MinValue = 0
