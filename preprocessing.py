@@ -1,6 +1,7 @@
 import math
 import os
 import random
+import shutil
 import time
 import cv2
 import numpy as np
@@ -136,6 +137,10 @@ class Processor():
                             hh = H if y+self.clip_size > H else y+self.clip_size
                             org_im_split = org_im[y:hh, x :ww]
                             goal_im_split = goal_im[y:hh, x :ww]
+                            if not org_im_split.any() or not goal_im_split.any():
+                                y += self.skip_size
+                                continue
+
                             if random.random() >= 0.5 and rotate:
                                 org_im_split, goal_im_split = self.add_rotate([org_im_split, goal_im_split])
                             if random.random() >= 0.5 and sharpen:
@@ -203,16 +208,8 @@ class Processor():
 
 
 if __name__ == '__main__':
-    p = Processor(mode='order',clip_size=700,skip_size=300)
-    p.run(input_path='/Users/maoyufeng/slash/dataset/org_dataset/film-mask',
-          output_path='/Users/maoyufeng/slash/dataset/train_dataset/film-mask',
+    p = Processor(mode='order',clip_size=700,skip_size=500)
+    p.run(input_path='/Users/maoyufeng/slash/dataset/org_dataset/canon',
+          output_path='/Users/maoyufeng/slash/dataset/train_dataset/canon',
           sharpen=False,
           min_byte=50.0)
-
-    # im1 = cv2.imread('/Users/maoyufeng/slash/dataset/色罩/org/9.jpg')
-    # im2 = cv2.imread('/Users/maoyufeng/slash/dataset/色罩/org/9_mask.jpg')
-    # H,W,_ = im1.shape
-    # w = int(W/5)
-    # for i in range(0,W,w):
-    #     cv2.imwrite(f'/Users/maoyufeng/slash/dataset/色罩/9{i}.jpg',im1[:H,i:i+w,:])
-    #     cv2.imwrite(f'/Users/maoyufeng/slash/dataset/色罩/9{i}_org.jpg',im2[:H,i:i+w,:])

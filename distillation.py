@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from dataset import MaskDataset
-from models import Olympus
+from models import FilterSimulation
 
 
 
@@ -31,7 +31,7 @@ else:
     device = torch.device('cpu')
 
 
-teacher_model = Olympus()
+teacher_model = FilterSimulation()
 teacher_model.load_state_dict(torch.load('static/checkpoints/olympus/best.pth', map_location=device))
 teacher_model = teacher_model.to(device=device)
 teacher_model.eval()

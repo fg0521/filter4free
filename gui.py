@@ -293,7 +293,6 @@ class PredictionWorker(QObject):
                 start = end
                 cnt += 1
         target.save(save_path, quality=quality)
-        # print(f'保存到：{os.path.join(save_path, name)}')
 
 
 class PredictionThread(QThread):
@@ -595,7 +594,6 @@ class MyMainWindow(QMainWindow):
     def resizeEvent(self, e):
         # 改变窗口大小后QLabel中的图片重新加载
         if e.type() == QtCore.QEvent.Resize:
-            print(self.save_path)
             if os.path.exists(self.save_path):
                 self.display4image(self.save_path)
             elif os.path.exists(self.predict_image):
