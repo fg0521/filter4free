@@ -31,8 +31,8 @@ class Trainer():
         self.model = model
         if torch.cuda.is_available():
             self.device = torch.device('cuda:0')
-        # elif torch.backends.mps.is_built():
-        #     self.device = torch.device('mps')
+        elif torch.backends.mps.is_built():
+            self.device = torch.device('mps')
         else:
             self.device = torch.device('cpu')
         self.data_path = data_path
@@ -57,7 +57,7 @@ class Trainer():
         val_data = MaskDataset(dataset_path=os.path.join(self.data_path), mode='val', channel=self.train_channel)
         return train_data,val_data
 
-    def train(self,epoch=100,lr=1e-3,batch_size=8):
+    def train(self,epoch=100,lr=1e-3,batch_size=8,eval_step=10):
         """
         epoch: 训练轮次
         lr: 学习率
@@ -100,7 +100,7 @@ class Trainer():
                 self.infer(checkpoint=os.path.join(self.model_path, f"epoch{epoch}.pth"),
                       save_path=os.path.join(self.test_path, f"epoch{epoch}.jpg"))
 
-            if (epoch + 1) % 10 == 0:
+            if (epoch + 1) % eval_step == 0:
                 valid_epoch_loss = []
                 self.model.eval()
                 pbar = tqdm(total=len(val_loader), desc=f"Epoch: {epoch + 1}: ")
@@ -119,7 +119,7 @@ class Trainer():
                     # 保存训练好的模型
                     torch.save(self.model.state_dict(), os.path.join(self.model_path, "best.pth"))
 
-    def infer(self,checkpoint, save_path):
+    def infer(self,checkpoint, save_path,quality=100):
         self.model.load_state_dict(torch.load(checkpoint))
         model = self.model.to(self.device)
         if self.train_channel == 'rgb':
@@ -137,7 +137,7 @@ class Trainer():
             out = out.squeeze(0).permute(1, 2, 0).cpu().numpy()
             out = (lab2rgb(out * [100, 255, 255] - [0, 128, 128]) * 255).astype(np.uint8)
             out = Image.fromarray(out)
-        out.save(save_path)
+        out.save(save_path,quality=quality)
 
 
 if __name__ == '__main__':
