@@ -141,20 +141,6 @@ class Trainer():
 
 
 if __name__ == '__main__':
-    # train(model_name='olympus',
-    #       data_path='/Users/maoyufeng/slash/dataset/olympus浓郁色彩',
-    #       model_path='checkpoints/olympus',
-    #       test_image='images/1696644460324322_mask.jpg',
-    #       test_path='test/olympus',
-    #       training_channel='rgb')
-
-    # train(model_name='film_mask',
-    #       data_path='/Users/maoyufeng/slash/dataset/color_mask',
-    #       model_path='checkpoints/film_mask2',
-    #       test_image='images/mask.jpg',
-    #       test_path='test/film_mask2',
-    #       training_channel='rgb')
-
     trainer =Trainer(data_path='/Users/maoyufeng/Downloads/1',
                      model=FilterSimulation(),
                      model_path='static/checkpoints/fuji/provia')

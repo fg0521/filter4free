@@ -133,7 +133,7 @@ if __name__ == '__main__':
     model.to(device)
     model.eval()
     st = time.time()
-    target = infer(image='/Users/maoyufeng/slash/dataset/org_dataset/canon/IMG_4963_org.jpg', model=model)
+    target = infer(image='/Users/maoyufeng/slash/dataset/org_dataset/canon/IMG_5058_org.jpg', model=model)
     print(time.time()-st)
     # print(target.size)
     target.show()

@@ -11,12 +11,12 @@ from PyQt5.QtCore import pyqtSignal, QObject, QThread, pyqtProperty, QSize, Qt, 
 from infer import image2block
 from models import FilterSimulation, FilmMask
 from PyQt5.QtGui import QColor, QPainter, QFont, QPixmap
-import yaml
+import json
 
 file_path = os.path.dirname(__file__)
 
-with open(os.path.join(file_path,'static','config.yaml'),'r') as f:
-    STYLE = yaml.load(f, Loader=yaml.FullLoader)[sys.platform]
+with open(os.path.join(file_path,'static','config.json'),'r') as f:
+    STYLE = json.load(f)[sys.platform]
 
 
 class PercentProgressBar(QWidget):

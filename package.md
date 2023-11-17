@@ -1,4 +1,4 @@
-## Nuitka打包遇到的问题和解决方案
+## 打包说明
 
 #### MacOS AppleSilicon
 
@@ -40,9 +40,8 @@ python -m nuitka \
           --macos-app-version=1.0\
           --disable-console\
           --include-data-dir=./static/=./static/\
-				  --include-data-dir=PyQt5/Qt5=PyQt5/Qt5\
 					--macos-app-icon=./app.icns\
-          main.py
+          FilterSimulation.py
 ```
 
 注意：
@@ -51,9 +50,11 @@ python -m nuitka \
 
 2. 确保下载的第三方库均为arm64版本
 
-3. 打包后的 **info.plist文件** 和 **Resource文件夹** 需要手动移动到 **app的Contents**目录下面
+3. 打包过程中发现若代码中存在**读取yaml文件**，打包后的**app无法双击打开**且不报错（可以在termial中打开）；替换为**json文件**后正常打开。
 
-4. 关于PyQt5：使用pip安装的qt5虽然为arm64版本，但是存在如下问题：
+4. 打包后的 **info.plist文件** 和 **Resource文件夹** 需要手动移动到 **app的Contents**目录下面
+
+5. 关于PyQt5：使用pip安装的qt5虽然为arm64版本，但是存在如下问题：
 
    ```python
    ImportError: dlopen(/Users/User/environments/env/lib/python3.11/site-packages/PyQt5/QtCore.abi3.so, 0x0002): Symbol not found: __ZTVNSt3__13pmr25monotonic_buffer_resourceE 

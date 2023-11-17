@@ -66,7 +66,7 @@
 
 ###### MacOS GUI
 
-1.  AppleSelicon：链接: https://pan.baidu.com/s/1ofQGPB9_kPnULd7wgvswEw 提取码: wcp3 
+1.  Apple Silicon：链接: 链接: https://pan.baidu.com/s/1vcknPmSs2RNqYe9T-6TcyA 提取码: u9dq
    Intel：链接: https://pan.baidu.com/s/1MFww31KUhf6mG8QQBs_zhQ 提取码: enpi 
 2.  运行**AIFilter.app** 
 3.  若无法打开，可以在terminal中使用 **open AIFilter.app** 命令打开或**右键显示包内容-Contents-MacOS-AIFilter-右键在终端中打开**
