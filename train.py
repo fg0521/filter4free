@@ -27,17 +27,19 @@ torch.backends.cudnn.deterministic = True  #
 
 
 class Trainer():
-    def __init__(self,model,data_path,model_path,intensification=True,test_image=None):
+    def __init__(self,model,data_path,model_path,pretrained_model=None,intensification=True,test_image=None):
         self.model = model
         if torch.cuda.is_available():
             self.device = torch.device('cuda:0')
-        elif torch.backends.mps.is_built():
-            self.device = torch.device('mps')
+        # elif torch.backends.mps.is_built():
+        #     self.device = torch.device('mps')
         else:
             self.device = torch.device('cpu')
         self.data_path = data_path
         self.train_channel = 'rgb'
         self.test_image = test_image
+        if pretrained_model:
+            self.model.load_state_dict(torch.load(pretrained_model,map_location=self.device))
         if self.test_image is not None:
             self.test_path = os.path.dirname(test_image)
         assert os.path.exists(data_path), 'Can Not Find Dataset For Training!'
@@ -57,7 +59,7 @@ class Trainer():
         val_data = MaskDataset(dataset_path=os.path.join(self.data_path), mode='val', channel=self.train_channel)
         return train_data,val_data
 
-    def train(self,epoch=100,lr=1e-3,batch_size=8,eval_step=10):
+    def train(self,epoch=100,lr=2.5e-4,batch_size=8,eval_step=10):
         """
         epoch: 训练轮次
         lr: 学习率
@@ -68,7 +70,6 @@ class Trainer():
         train_loader = DataLoader(dataset=train_data, batch_size=batch_size, shuffle=True)
         val_loader = DataLoader(dataset=val_data, batch_size=batch_size, shuffle=True)
         self.model = self.model.to(self.device)
-        torch.load(strict=False)
         # 定义损失函数和优化器
         mse_fn = nn.MSELoss()
         emd_fn = EMDLoss()
@@ -91,7 +92,7 @@ class Trainer():
                 optimizer.step()
                 loss_list[0].append(loss1.item())
                 loss_list[1].append(loss2.item())
-                pbar.set_postfix(**{'hist_loss': round(sum(loss_list[0])/len(loss_list[0]), 4),
+                pbar.set_postfix(**{'emd_loss': round(sum(loss_list[0])/len(loss_list[0]), 4),
                                     'mse_loss': round(sum(loss_list[1])/len(loss_list[1]), 4), })  # 参数列表
                 pbar.update(1)  # 步进长度
             StepLR.step()
@@ -141,7 +142,8 @@ class Trainer():
 
 
 if __name__ == '__main__':
-    trainer =Trainer(data_path='/Users/maoyufeng/Downloads/1',
+    trainer =Trainer(data_path='/Users/maoyufeng/slash/dataset/train_dataset/fuji-velvia2',
                      model=FilterSimulation(),
-                     model_path='static/checkpoints/fuji/provia')
+                     model_path='static/checkpoints/fuji/provia',
+                     pretrained_model='static/checkpoints/fuji/velvia/best.pth')
     trainer.train()

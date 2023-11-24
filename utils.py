@@ -6,12 +6,13 @@ from matplotlib import pyplot as plt
 
 
 
-def images2gif(dir,gif_name):
+def images2gif(dir,gif_name,resize=(512,512)):
     # 打开图像文件并将它们添加到图像列表中
     images = []
     for img_name in sorted(os.listdir(dir)):
         if img_name.endswith('jpg'):
             image = Image.open(os.path.join(dir,img_name))
+            image = image.resize(resize)
             images.append(image)
 
     # 将图像列表保存为 GIF 动画
@@ -80,8 +81,8 @@ def add_chosen_status(org_img):
 
 
 if __name__ == '__main__':
-    # images2gif(dir='test/fuji/velvia',
-    #            gif_name='velvia')
+    images2gif(dir='test/canon',
+               gif_name='canon')
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test.jpg',show=True)
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/org.jpg')
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/small-rgb.jpg')
@@ -92,4 +93,4 @@ if __name__ == '__main__':
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test/small-rgb-new2.jpg',show=True)
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test/small-rgb-new3.jpg',show=True)
 
-    add_chosen_status(org_img='/Users/maoyufeng/Downloads/FilmMask.png')
+    # add_chosen_status(org_img='/Users/maoyufeng/Downloads/FilmMask.png')

@@ -15,7 +15,7 @@ import json
 
 file_path = os.path.dirname(__file__)
 
-with open(os.path.join(file_path,'static','config.json'),'r') as f:
+with open(os.path.join(file_path, 'static', 'config.json'), 'r') as f:
     STYLE = json.load(f)[sys.platform]
 
 
@@ -31,13 +31,14 @@ class PercentProgressBar(QWidget):
     TextColor = QColor(255, 255, 255)  # 文字颜色
     BorderColor = QColor(24, 189, 155)  # 边框圆圈颜色
     BackgroundColor = QColor(70, 70, 70)  # 背景颜色
+    decimals = 2 # 进度条小数点
 
     def __init__(self, *args, value=0, minValue=0, maxValue=100,
                  borderWidth=8, clockwise=True, showPercent=True,
                  showFreeArea=False, showSmallCircle=False,
                  textColor=QColor(255, 255, 255),
                  borderColor=QColor(0, 255, 0),
-                 backgroundColor=QColor(70, 70, 70), **kwargs):
+                 backgroundColor=QColor(70, 70, 70),decimals=2, **kwargs):
         super(PercentProgressBar, self).__init__(*args, **kwargs)
         self.Value = value
         self.MinValue = minValue
@@ -50,6 +51,7 @@ class PercentProgressBar(QWidget):
         self.TextColor = textColor
         self.BorderColor = borderColor
         self.BackgroundColor = backgroundColor
+        self._decimals = decimals
 
     def setRange(self, minValue: int, maxValue: int):
         if minValue >= maxValue:  # 最小值>=最大值
@@ -262,61 +264,65 @@ class PercentProgressBar(QWidget):
 class PredictionWorker(QObject):
     update_progress = pyqtSignal(int)
 
-    def predict(self, model, device, image, save_path, quality=100, padding=16, patch_size=640, batch=8):
+    def predict(self, model, device, image_list, filter_name, quality=100, padding=16, patch_size=640, batch=8):
         model = model.to(device)
-        img = Image.open(image)
-        # 对每个小块进行推理
-        image_size = img.size
-        target = Image.new('RGB', image_size)
-        split_images, size_list = image2block(img, patch_size=patch_size, padding=padding)
-
-        t = min(100 / len(split_images) * batch, 100)
         start = 0
-        cnt = 1
-        with torch.no_grad():
-            for i in range(0, len(split_images), batch):
-                input = torch.vstack(split_images[i:i + batch])
-                input = input.to(device)
-                output = model(input)
-                for k in range(output.shape[0]):
-                    out = torch.clamp(output[k, :, :, :] * 255, min=0, max=255).byte().permute(1, 2,
-                                                                                               0).detach().cpu().numpy()
-                    x, y, w, h = size_list[i + k]
-                    out = cv2.resize(out, (w, h))
-                    out = out[padding:h - padding, padding:w - padding, :]
-                    target.paste(Image.fromarray(out), (x, y))
+        for n,image in enumerate(image_list):
+            img = Image.open(image)
+            # 对每个小块进行推理
+            image_size = img.size
+            target = Image.new('RGB', image_size)
+            split_images, size_list = image2block(img, patch_size=patch_size, padding=padding)
+            # 第n张图片的耗时时间 均分
+            end = 100 /len(image_list)*(n+1)
+            # print(start,'--->',end)
+            each_start = start
+            with torch.no_grad():
+                for i in range(0, len(split_images), batch):
+                    input = torch.vstack(split_images[i:i + batch])
+                    input = input.to(device)
+                    output = model(input)
+                    for k in range(output.shape[0]):
+                        out = torch.clamp(output[k, :, :, :] * 255, min=0, max=255).byte().permute(1, 2,
+                                                                                                   0).detach().cpu().numpy()
+                        x, y, w, h = size_list[i + k]
+                        out = cv2.resize(out, (w, h))
+                        out = out[padding:h - padding, padding:w - padding, :]
+                        target.paste(Image.fromarray(out), (x, y))
 
-                end = min(100, int(t * cnt))
-                for num in range(start + 1, end + 1):
-                    self.update_progress.emit(num)
-                    time.sleep(0.05)
-                start = end
-                cnt += 1
-        target.save(save_path, quality=quality)
+                    each_end = int(min(end,each_start+(end-start)*min(1.0,(i+1)/len(split_images))))+1
+                    for num in range(each_start,each_end):
+                        # print(each_start,'\t',each_end)
+                        self.update_progress.emit(num)
+                        time.sleep(0.05)
+                    each_start = each_end
+            start = int(end)
+            file_name,file_type = os.path.splitext(image)
+            target.save(file_name+f"_{filter_name}"+file_type, quality=quality)
 
 
 class PredictionThread(QThread):
-    def __init__(self, image, model, device, save_path, image_quality):
+    def __init__(self, image_list, model, device, image_quality,filter_name):
         super().__init__()
         self.worker = PredictionWorker()
-        self.image = image
+        self.image_list = image_list
         self.model = model
         self.device = device
-        self.save_path = save_path
         self.quality = image_quality
+        self.filter_name = filter_name
 
     def run(self):
         self.worker.predict(model=self.model, device=self.device,
-                            image=self.image,
-                            save_path=self.save_path,
-                            quality=self.quality)
+                            image_list=self.image_list,
+                            quality=self.quality,
+                            filter_name=self.filter_name)
 
 
 class MyMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.predict_image = ''
-        self.save_path =''
+        self.save_path = ''
         self.default_filter = 'FJ-V'
         self.quality_num = 100
         self.model = FilterSimulation()
@@ -386,8 +392,8 @@ class MyMainWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         self.setGeometry(STYLE['window']['x'], STYLE['window']['y'],
-                         STYLE['window']['width'],STYLE['window']['height'])
-        self.setMinimumSize(STYLE['window']['width'],STYLE['window']['height'])
+                         STYLE['window']['width'], STYLE['window']['height'])
+        self.setMinimumSize(STYLE['window']['width'], STYLE['window']['height'])
 
         # 整体设置垂直布局->上中下
         window_layout = QVBoxLayout()
@@ -465,6 +471,7 @@ class MyMainWindow(QMainWindow):
                                                backgroundColor=QColor(178, 89, 110),
                                                borderColor=QColor(118, 179, 226),
                                                borderWidth=10)
+        # self.progress_bar.setFormat("%.02f %%" % value)
         # self.raw_button = QPushButton()
         self.start_button = QPushButton()
         self.start_button.clicked.connect(self.start_prediction)
@@ -579,7 +586,28 @@ class MyMainWindow(QMainWindow):
             if url.isLocalFile():
                 self.predict_image = url.toLocalFile()
                 self.save_path = ''
-                self.display4image(self.predict_image)
+                # todo 多图像推理
+                if os.path.isdir(self.predict_image):
+                    l = []
+                    for img in os.listdir(self.predict_image):
+                        try:
+                            Image.open(os.path.join(self.predict_image, img))
+                            l.append(os.path.join(self.predict_image, img))
+                        except:
+                            continue
+                    self.predict_image = l
+                    self.display4image(os.path.join(file_path, 'static', 'src','file_temp.png'))
+                else:
+                    try:
+                        Image.open(self.predict_image)
+                        self.display4image(self.predict_image)
+                        self.predict_image = [self.predict_image]
+                    except:
+                        self.warning_box.setWindowTitle("Waring")
+                        self.warning_box.setText("Unable to open this image!")
+                        self.warning_box.setStandardButtons(QMessageBox.Ok)
+                        self.warning_box.exec_()
+                        self.predict_image = []
 
     def display4image(self, image):
         # 显示QLabel图片
@@ -600,12 +628,17 @@ class MyMainWindow(QMainWindow):
                 self.display4image(self.predict_image)
 
     def start_prediction(self):
+
         if self.predict_image:
-            save_dir = os.path.dirname(self.predict_image)
-            name = '.'.join(os.path.basename(self.predict_image).split('.')[:-1]) + f'_{self.default_filter}.jpg'
-            self.save_path = os.path.join(save_dir, name)
-            self.prediction_thread = PredictionThread(self.predict_image, self.model, self.device, self.save_path,
-                                                      self.quality_num)
+            # dir_path = os.path.dirname(self.predict_image[0])
+            # name = '.'.join(os.path.basename(self.predict_image).split('.')[:-1]) + f'_{self.default_filter}.jpg'
+            # self.save_path = os.path.join(save_dir, name)
+            self.save_path = self.predict_image[0] if len(self.predict_image) == 1 else os.path.join(file_path,
+                                                                                                     'static','src',
+                                                                                                     'file_temp.png')
+
+            self.prediction_thread = PredictionThread(self.predict_image, self.model, self.device,
+                                                      self.quality_num,self.default_filter)
             self.prediction_thread.worker.update_progress.connect(self.update_progress_bar)
             self.prediction_thread.finished.connect(lambda: self.display4image(self.save_path))
             self.start_button.setEnabled(False)
