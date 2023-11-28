@@ -73,16 +73,37 @@ def add_chosen_status(org_img):
     name = os.path.basename(org_img).split('.')[0]
     chosen_img = Image.open('static/src/chosen.jpg').resize((25,25))
     org_img = Image.open(org_img).resize((100,100))
+    org_img.save(f'static/src/{name}-ORG.png')
     org_img.paste(im=chosen_img,box=(75,75))
     org_img.convert(mode='RGBA')
     org_img.save(f'static/src/{name}.png')
+
+def add_frame(image):
+    frame = Image.open('/Users/maoyufeng/Downloads/IMG_0289.PNG')
+    img = Image.open(image).resize((3000,3000))
+    W,H = img.size
+    ratio = W/H
+    # 1:1
+    if 0.9<=ratio<1.1:
+        img = img.resize((3000,3000))
+    # 4:3
+    elif 1.1<=ratio<1.4:
+        img = img.resize((3000,2250))
+    # 3:2
+    elif 1.4<=ratio<=1.6:
+        img = img.resize((3000,2000))
+    # 65:24
+    elif 2.6<ratio<2.8:
+        img = img.resize((3000,1108))
+    frame.paste(img,(200,200))
+    frame.save('/Users/maoyufeng/Downloads/res.png',quality=100)
 
 
 
 
 if __name__ == '__main__':
-    images2gif(dir='test/canon',
-               gif_name='canon')
+    # images2gif(dir='test/canon',
+    #            gif_name='canon')
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test.jpg',show=True)
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/org.jpg')
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/small-rgb.jpg')
@@ -94,3 +115,7 @@ if __name__ == '__main__':
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test/small-rgb-new3.jpg',show=True)
 
     # add_chosen_status(org_img='/Users/maoyufeng/Downloads/FilmMask.png')
+    for file in os.listdir('/Users/maoyufeng/Downloads/1'):
+        if file.endswith('PNG'):
+            add_chosen_status(f'/Users/maoyufeng/Downloads/1/{file}')
+    # add_frame('/Users/maoyufeng/Downloads/191372e22j77002128150eb0a867ad00.jpg')

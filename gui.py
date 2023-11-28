@@ -596,7 +596,7 @@ class MyMainWindow(QMainWindow):
                         except:
                             continue
                     self.predict_image = l
-                    self.display4image(os.path.join(file_path, 'static', 'src','file_temp.png'))
+                    self.display4image(os.path.join(file_path, 'static', 'src','file_temp2.png'))
                 else:
                     try:
                         Image.open(self.predict_image)
@@ -635,7 +635,7 @@ class MyMainWindow(QMainWindow):
             # self.save_path = os.path.join(save_dir, name)
             self.save_path = self.predict_image[0] if len(self.predict_image) == 1 else os.path.join(file_path,
                                                                                                      'static','src',
-                                                                                                     'file_temp.png')
+                                                                                                     'file_temp1.png')
 
             self.prediction_thread = PredictionThread(self.predict_image, self.model, self.device,
                                                       self.quality_num,self.default_filter)
