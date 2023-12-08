@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -5,6 +6,9 @@ from PIL import Image
 from torchvision import transforms
 from torch.autograd import Variable
 from math import exp
+
+from dataset import transform
+
 
 class ChiSquareLoss(nn.Module):
     def __init__(self):
@@ -79,7 +83,11 @@ class EMDLoss(nn.Module):
     def compute_histogram(self, img):
         hist = []
         for i in range(img.shape[0]):  # Iterate over channels
-            hist_channel = torch.histc(img[i, :, :, :] * 255, bins=self.num_bins, min=0, max=255)
+            try:
+                hist_channel = torch.histc(img[i, :, :, :] * 255, bins=self.num_bins, min=0, max=255)
+            except NotImplementedError:
+                # not support for mps now, need to move tensor to cpu
+                hist_channel = torch.histc(img.cpu()[i, :, :, :] * 255, bins=self.num_bins, min=0, max=255).to(img.device)
             hist_channel = hist_channel / torch.sum(hist_channel)  # Normalize histogram
             hist.append(hist_channel)
         hist = torch.stack(hist, dim=1)
@@ -89,8 +97,13 @@ class EMDLoss(nn.Module):
         hist_dist1 = self.compute_histogram(im1)
         hist_dist2 = self.compute_histogram(im2)
         # 计算两个分布的累积分布函数（CDF）
-        hist_dist1_cumsum = torch.cumsum(hist_dist1, dim=0)
-        hist_dist2_cumsum = torch.cumsum(hist_dist2, dim=0)
+        try:
+            hist_dist1_cumsum = torch.cumsum(hist_dist1, dim=0)
+            hist_dist2_cumsum = torch.cumsum(hist_dist2, dim=0)
+        except NotImplementedError:
+            # not support for mps, need to move tensor to cpu
+            hist_dist1_cumsum = torch.cumsum(hist_dist1.cpu(), dim=0).to(hist_dist1.device)
+            hist_dist2_cumsum = torch.cumsum(hist_dist2.cpu(), dim=0).to(hist_dist2.device)
         # 计算EMD
         emd_loss = torch.norm(hist_dist1_cumsum - hist_dist2_cumsum, p=1,dim=0)
         # 对每个批次每个通道求平均损失
@@ -193,39 +206,8 @@ def ssim(img1, img2, window_size=11, size_average=True):
 
 
 if __name__ == '__main__':
-    # # 创建两个示例直方图（这里使用随机数据，实际应用中需要根据你的需求计算直方图）
-    # # im1 = torch.rand((20, 3, 512, 512))  # 10 bins
-    # # im2 = torch.rand((20, 3, 512, 512))
-    # transform = transforms.Compose([
-    #     transforms.ToTensor(),
-    # ])
-    # im1 = Image.open('/Users/maoyufeng/slash/dataset/nn/DSCF1846_1.jpg')
-    # im2 = Image.open('/Users/maoyufeng/slash/dataset/nn/DSCF1846.JPG')
-    #
-    # im2 = im2.resize(im1.size)
-    #
-    # im1 = transform(im1).unsqueeze(0)
-    # im2 = transform(im2).unsqueeze(0)
-    # # # 创建损失函数实例
-    # # loss_fn = EMDLoss()
-    # # # 0.00014203631144482642
-    # # # 计算Chi-Square距离
-    # # loss = loss_fn(im1, im2)
-    # loss = F.mse_loss(im1,im2)
-    # print("Chi-Square Loss:", loss.item())
-
-    # 读取数据
-    haze_path = '/Users/maoyufeng/epoch9.jpg'
-    gt_path = '/Users/maoyufeng/fuji-nn.jpg'
-
-
-    def read_img(path):
-        img = Image.open(path)
-        return transforms.ToTensor()(img)  # 数据转为张量并进行数值归一化
-
-    haze_img, gt_img = read_img(haze_path), read_img(gt_path)
-    # print(type(haze_img))
-    haze_img, gt_img = torch.unsqueeze(haze_img, 0), torch.unsqueeze(haze_img, 0)
-    ssim_value = ssim(haze_img, gt_img)
-    print(ssim_value)
-
+    img = transform(Image.open('/Users/maoyufeng/Downloads/iShot_2023-12-05_11.40.09.jpg'))
+    hist_channel = torch.histc(img[:, :, :] * 255, bins=256, min=0, max=255)
+    print(hist_channel)
+    hist, bin_edges = np.histogram(img[:, :, :] * 255, bins=256, range=(0,255))
+    print(torch.from_numpy(hist).float())

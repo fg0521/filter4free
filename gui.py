@@ -335,50 +335,55 @@ class MyMainWindow(QMainWindow):
 
         self.checkpoints_dict = {
             'FilmMask': os.path.join(file_path, 'static', 'checkpoints', 'film-mask', 'best.pth'),  # 去色罩
+
             # Olympus Filters
-            "OM-VIVID": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'vivid', 'best.pth'),  # 浓郁色彩
-            "OM-SoftFocus": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'soft-focus', 'best.pth'),  # 柔焦
-            "OM-SoftLight": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'soft-light', 'best.pth'),  # 柔光
-            "OM-Nostalgia": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'nostalgia', 'best.pth'),
-            # 怀旧颗粒
-            "OM-Stereoscopic": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'stereoscopic', 'best.pth'),
-            # 立体
+            # "OM-VIVID": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'vivid', 'best.pth'),  # 浓郁色彩
+            # "OM-SoftFocus": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'soft-focus', 'best.pth'),  # 柔焦
+            # "OM-SoftLight": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'soft-light', 'best.pth'),  # 柔光
+            # "OM-Nostalgia": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'nostalgia', 'best.pth'),   # 怀旧颗粒
+            # "OM-Stereoscopic": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'stereoscopic', 'best.pth'), # 立体
+
             # Fuji Filters
             'FJ-A': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'acros', 'best.pth'),  # ACROS
-            'FJ-CC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-chrome', 'best.pth'),
-            # CLASSIC CHROME
+            'FJ-CC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-chrome', 'best.pth'),    # CLASSIC CHROME
             'FJ-E': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'eterna', 'best.pth'),  # ETERNA
-            'FJ-EB': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'eterna-bleach-bypass', 'best.pth'),
-            # ETERNA BLEACH BYPASS
-            'FJ-NC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-neg', 'best.pth'),
-            # CLASSIC Neg.
+            'FJ-EB': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'eterna-bleach-bypass', 'best.pth'),  # ETERNA BLEACH BYPASS
+            'FJ-NC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-neg', 'best.pth'),   # CLASSIC Neg.
             'FJ-NH': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'pro-neg-hi', 'best.pth'),  # PRO Neg.Hi
-            'FJ-NN': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'nostalgic-neg', 'best.pth'),
-            # NOSTALGIC Neg.
+            'FJ-NN': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'nostalgic-neg', 'best.pth'), # NOSTALGIC Neg.
             'FJ-NS': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'pro-neg-std', 'best.pth'),  # PRO Neg.Std
             'FJ-S': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'astia', 'best.pth'),  # ASTIA
             'FJ-STD': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'provia', 'best.pth'),  # PROVIA
             'FJ-V': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'velvia', 'best.pth'),  # VELVIA
+
             # Richo Filters
-            'R-Std': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'std', 'best.pth'),  # 标准
-            'R-Vivid': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'vivid', 'best.pth'),  # 鲜艳
-            'R-Single': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'single', 'best.pth'),  # 单色
-            'R-SoftSingle': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'soft-single', 'best.pth'),  # 软单色
-            'R-StiffSingle': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'stiff-single', 'best.pth'),
-            # 硬单色
-            'R-ContrastSingle': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'contrastSingle', 'best.pth'),
-            # 高对比对黑白
-            'R-Neg': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'neg', 'best.pth'),  # 负片
-            'R-Pos': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'pos', 'best.pth'),  # 正片
-            'R-Nostalgia': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'nostalgia', 'best.pth'),  # 怀旧
-            'R-HDR': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'hdr', 'best.pth'),  # HDR
-            'R-Pos2Neg': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'pos2neg', 'best.pth'),  # 正负逆冲
+            # 'R-Std': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'std', 'best.pth'),  # 标准
+            # 'R-Vivid': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'vivid', 'best.pth'),  # 鲜艳
+            # 'R-Single': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'single', 'best.pth'),  # 单色
+            # 'R-SoftSingle': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'soft-single', 'best.pth'),  # 软单色
+            # 'R-StiffSingle': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'stiff-single', 'best.pth'), # 硬单色
+            # 'R-ContrastSingle': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'contrastSingle', 'best.pth'),    # 高对比对黑白
+            # 'R-Neg': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'neg', 'best.pth'),  # 负片
+            # 'R-Pos': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'pos', 'best.pth'),  # 正片
+            # 'R-Nostalgia': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'nostalgia', 'best.pth'),  # 怀旧
+            # 'R-HDR': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'hdr', 'best.pth'),  # HDR
+            # 'R-Pos2Neg': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'pos2neg', 'best.pth'),  # 正负逆冲
+
             # Canon Filters
-            'Canon': os.path.join(file_path, 'static', 'checkpoints', 'canon', 'best.pth'),  # 佳能
+            # 'Canon': os.path.join(file_path, 'static', 'checkpoints', 'canon', 'best.pth'),  # 佳能
+
             # Sony Filters
-            'Sony': os.path.join(file_path, 'static', 'checkpoints', 'sony', 'best.pth'),  # 索尼
+            # 'Sony': os.path.join(file_path, 'static', 'checkpoints', 'sony', 'best.pth'),  # 索尼
+
             # Nikon Filters
-            'Nikon': os.path.join(file_path, 'static', 'checkpoints', 'nikon', 'best.pth'),  # 尼康
+            # 'Nikon': os.path.join(file_path, 'static', 'checkpoints', 'nikon', 'best.pth'),  # 尼康
+
+            # Kodak Filters
+            'KD-ColorPlus':os.path.join(file_path, 'static', 'checkpoints', 'kodak','colorplus', 'best.pth'),  # color plus
+            'KD-Gold200': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'gold200', 'best.pth'),    # gold 200
+            'KD-UltraMax400': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'ultramax400', 'best.pth'),  # ultramax 400
+            'KD-Portra400': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'portra400', 'best.pth'), # portra 400
+            'KD-Portra160nc': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'portra160nc', 'best.pth'),# portra 160nc
         }
         self.model.load_state_dict(
             state_dict=torch.load(self.checkpoints_dict[self.default_filter], map_location=self.device))

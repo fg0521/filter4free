@@ -8,7 +8,7 @@ from PIL import Image
 # from torchvision import transforms
 from tqdm import tqdm
 import argparse
-from models import FilterSimulation, UNet, UNet2, FilmMask
+from models import FilterSimulation, FilmMask
 
 # from utils import image_concat
 
@@ -128,16 +128,16 @@ if __name__ == '__main__':
         device = torch.device('cpu')
     # model = UNet()
     model = FilterSimulation()
-    pth = 'static/checkpoints/fuji/velvia/best.pth'
+    pth = 'static/checkpoints/fuji/classic-chrome/best.pth'
     model.load_state_dict(torch.load(pth, map_location=device))
     model.to(device)
     model.eval()
     st = time.time()
-    target = infer(image='/Users/maoyufeng/Downloads/DSCF3575_org.jpg', model=model)
+    target = infer(image='/Users/maoyufeng/Downloads/IMG_5116_org.jpg', model=model)
     print(time.time()-st)
     # print(target.size)
     # target.show()
-    target.save('/Users/maoyufeng/Downloads/2332323.jpg', quality=100)
+    target.save('/Users/maoyufeng/Downloads/IMG_5116_org2.jpg', quality=100)
     # org = Image.open('/Users/maoyufeng/Downloads/10.4/浓郁色调/PA044711_org.jpg')
     # img = Image.open('/Users/maoyufeng/Downloads/10.4/浓郁色调/PA044711.jpg')
     # res = image_concat(img_list=[org,target,img])

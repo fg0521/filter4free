@@ -153,7 +153,7 @@ class Processor():
                             os.remove(os.path.join(output_path, mode, name + '_org.jpg'))
                             os.remove(os.path.join(output_path, mode, name + '.jpg'))
         if concat:
-            for i in tqdm(range(1500), desc='数据拼接'):
+            for i in tqdm(range(500), desc='数据拼接'):
                 img_num = set()
                 while len(img_num) < 9:
                     img_num.add(random.randint(0, len(file_list) - 1))
@@ -161,21 +161,23 @@ class Processor():
                 for num in img_num:
                     org_im = cv2.imread(os.path.join(input_path, file_list[num]))
                     goal_im = cv2.imread(os.path.join(input_path, file_list[num].replace('_org', '')))
-                    x, y = random.randint(0, org_im.shape[1] - 300), random.randint(0, org_im.shape[0] - 300)
+                    x, y = random.randint(0, org_im.shape[1] - 1000), random.randint(0, org_im.shape[0] - 1000)
                     org_im = org_im[y:y + 250, x:x + 250]
                     goal_im = goal_im[y:y + 250, x:x + 250]
                     if random.random() >= 0.5 and rotate:
                         org_im, goal_im = self.add_rotate([org_im, goal_im])
                     if random.random() >= 0.5 and sharpen:
                         org_im, goal_im = self.add_sharpen([org_im, goal_im])
-                    org_list.append(org_im)
-                    goal_list.append(goal_im)
-                org_im = self.add_concat(org_list)
-                goal_im = self.add_concat(goal_list)
-                name = str(time.time()).replace('.', '')
-                mode = 'val' if i % 10 == 0 else 'train'
-                cv2.imwrite(os.path.join(output_path, mode, name + '_org.jpg'), org_im)
-                cv2.imwrite(os.path.join(output_path, mode, name + '.jpg'), goal_im)
+                    if org_im.shape==(250,250,3) and goal_im.shape==(250,250,3):
+                        org_list.append(org_im)
+                        goal_list.append(goal_im)
+                if len(org_list)==9:
+                    org_im = self.add_concat(org_list)
+                    goal_im = self.add_concat(goal_list)
+                    name = str(time.time()).replace('.', '')
+                    mode = 'val' if i % 10 == 0 else 'train'
+                    cv2.imwrite(os.path.join(output_path, mode, name + '_org.jpg'), org_im)
+                    cv2.imwrite(os.path.join(output_path, mode, name + '.jpg'), goal_im)
 
     def add_align(self, org_img, goal_img):
         # 读取两张图像
@@ -221,7 +223,15 @@ class Processor():
 
 
 if __name__ == '__main__':
-    p = Processor(mode='random', clip_size=700)
-    p.run(input_path='/Users/maoyufeng/slash/dataset/org_dataset/velvia/正常',
-          output_path='/Users/maoyufeng/slash/dataset/train_dataset/fuji-velvia6',
-          min_byte=50.0,concat=False,align=True)
+    p = Processor(mode='order', clip_size=700)
+    for key in ['astia', 'classic-chrome', 'classic-neg', 'enerna', 'pro-neg-std', 'pro-neg-hi']:
+        p.run(input_path=f'/Users/maoyufeng/slash/dataset/org_dataset/{key}',
+              output_path=f'/Users/maoyufeng/slash/dataset/train_dataset/{key}',
+              min_byte=50.0,concat=True,clip=True,align=False,sharpen=False)
+
+    # for key in ['astia','classic-chrome','classic-neg','enerna','pro-neg-std','pro-neg-hi']:
+    #     path= '/Users/maoyufeng/slash/dataset/org_dataset/{}'.format(key)
+    #     for file in os.listdir(path):
+    #         if file.endswith('jpg'):
+    #             os.rename(os.path.join(path,file),
+    #                       os.path.join(path,file.replace("_org","")))
