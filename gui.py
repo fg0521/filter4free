@@ -355,6 +355,12 @@ class MyMainWindow(QMainWindow):
             'FJ-S': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'astia', 'best.pth'),  # ASTIA
             'FJ-STD': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'provia', 'best.pth'),  # PROVIA
             'FJ-V': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'velvia', 'best.pth'),  # VELVIA
+            'FJ-Pro400H': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'pro400h', 'best.pth'),  # VELVIA
+            'FJ-Superia400': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'superia400', 'best.pth'),  # VELVIA
+            'FJ-C100': '',
+            'FJ-C200': '',
+            'FJ-C400': '',
+            'FJ-Provia400X': '',
 
             # Richo Filters
             # 'R-Std': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'std', 'best.pth'),  # 标准
@@ -383,7 +389,10 @@ class MyMainWindow(QMainWindow):
             'KD-Gold200': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'gold200', 'best.pth'),    # gold 200
             'KD-UltraMax400': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'ultramax400', 'best.pth'),  # ultramax 400
             'KD-Portra400': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'portra400', 'best.pth'), # portra 400
-            'KD-Portra160nc': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'portra160nc', 'best.pth'),# portra 160nc
+            'KD-Portra160NC': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'portra160nc', 'best.pth'),# portra 160nc
+            'KD-E100': '',
+            'KD-Ektar100': '',
+
         }
         self.model.load_state_dict(
             state_dict=torch.load(self.checkpoints_dict[self.default_filter], map_location=self.device))

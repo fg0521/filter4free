@@ -112,6 +112,6 @@ if __name__ == '__main__':
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test/19416.jpg',show=True)
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test/small-rgb-new2.jpg',show=True)
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test/small-rgb-new3.jpg',show=True)
-    image2hsit(img='/Users/maoyufeng/Downloads/IMG_5116_org.jpg', show=True)
-    image2hsit(img='/Users/maoyufeng/Downloads/IMG_5116_org2.jpg', show=True)
-    image2hsit(img='/Users/maoyufeng/Downloads/IMG_5116.jpg', show=True)
+    for img in os.listdir('/Users/maoyufeng/Downloads/2'):
+        if img.endswith('png'):
+            add_chosen_status(os.path.join('/Users/maoyufeng/Downloads/2',img))
