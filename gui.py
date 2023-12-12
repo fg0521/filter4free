@@ -14,7 +14,6 @@ from PyQt5.QtGui import QColor, QPainter, QFont, QPixmap
 import json
 
 file_path = os.path.dirname(__file__)
-
 with open(os.path.join(file_path, 'static', 'config.json'), 'r') as f:
     STYLE = json.load(f)[sys.platform]
 
@@ -31,14 +30,14 @@ class PercentProgressBar(QWidget):
     TextColor = QColor(255, 255, 255)  # 文字颜色
     BorderColor = QColor(24, 189, 155)  # 边框圆圈颜色
     BackgroundColor = QColor(70, 70, 70)  # 背景颜色
-    decimals = 2 # 进度条小数点
+    decimals = 2  # 进度条小数点
 
     def __init__(self, *args, value=0, minValue=0, maxValue=100,
                  borderWidth=8, clockwise=True, showPercent=True,
                  showFreeArea=False, showSmallCircle=False,
                  textColor=QColor(255, 255, 255),
                  borderColor=QColor(0, 255, 0),
-                 backgroundColor=QColor(70, 70, 70),decimals=2, **kwargs):
+                 backgroundColor=QColor(70, 70, 70), decimals=2, **kwargs):
         super(PercentProgressBar, self).__init__(*args, **kwargs)
         self.Value = value
         self.MinValue = minValue
@@ -266,16 +265,23 @@ class PredictionWorker(QObject):
 
     def predict(self, model, device, image_list, filter_name, quality=100, padding=16, patch_size=640, batch=8):
         model = model.to(device)
+        if list(model.state_dict().keys())[-1]=='decoder.4.bias':
+            channels = model.state_dict()['decoder.4.bias'].shape[0]
+        else:
+            channels = 3
         start = 0
-        for n,image in enumerate(image_list):
+        for n, image in enumerate(image_list):
             img = Image.open(image)
             # 对每个小块进行推理
             image_size = img.size
-            target = Image.new('RGB', image_size)
+            if channels == 1:
+                target = Image.new('L', image_size)
+                img = img.convert('L')
+            else:
+                target = Image.new('RGB', image_size)
             split_images, size_list = image2block(img, patch_size=patch_size, padding=padding)
             # 第n张图片的耗时时间 均分
-            end = 100 /len(image_list)*(n+1)
-            # print(start,'--->',end)
+            end = 100 / len(image_list) * (n + 1)
             each_start = start
             with torch.no_grad():
                 for i in range(0, len(split_images), batch):
@@ -287,22 +293,25 @@ class PredictionWorker(QObject):
                                                                                                    0).detach().cpu().numpy()
                         x, y, w, h = size_list[i + k]
                         out = cv2.resize(out, (w, h))
-                        out = out[padding:h - padding, padding:w - padding, :]
+                        if len(out.shape) == 3:
+                            out = out[padding:h - padding, padding:w - padding, :]
+                        else:
+                            out = out[padding:h - padding, padding:w - padding]
                         target.paste(Image.fromarray(out), (x, y))
 
-                    each_end = int(min(end,each_start+(end-start)*min(1.0,(i+1)/len(split_images))))+1
-                    for num in range(each_start,each_end):
+                    each_end = int(min(end, each_start + (end - start) * min(1.0, (i + 1) / len(split_images)))) + 1
+                    for num in range(each_start, each_end):
                         # print(each_start,'\t',each_end)
                         self.update_progress.emit(num)
                         time.sleep(0.05)
                     each_start = each_end
             start = int(end)
-            file_name,file_type = os.path.splitext(image)
-            target.save(file_name+f"_{filter_name}"+file_type, quality=quality)
+            file_name, file_type = os.path.splitext(image)
+            target.save(file_name + f"_{filter_name}" + file_type, quality=quality)
 
 
 class PredictionThread(QThread):
-    def __init__(self, image_list, model, device, image_quality,filter_name):
+    def __init__(self, image_list, model, device, image_quality, filter_name):
         super().__init__()
         self.worker = PredictionWorker()
         self.image_list = image_list
@@ -335,14 +344,6 @@ class MyMainWindow(QMainWindow):
 
         self.checkpoints_dict = {
             'FilmMask': os.path.join(file_path, 'static', 'checkpoints', 'film-mask', 'best.pth'),  # 去色罩
-
-            # Olympus Filters
-            # "OM-VIVID": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'vivid', 'best.pth'),  # 浓郁色彩
-            # "OM-SoftFocus": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'soft-focus', 'best.pth'),  # 柔焦
-            # "OM-SoftLight": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'soft-light', 'best.pth'),  # 柔光
-            # "OM-Nostalgia": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'nostalgia', 'best.pth'),   # 怀旧颗粒
-            # "OM-Stereoscopic": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'stereoscopic', 'best.pth'), # 立体
-
             # Fuji Filters
             'FJ-A': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'acros', 'best.pth'),  # ACROS
             'FJ-CC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-chrome', 'best.pth'),    # CLASSIC CHROME
@@ -356,13 +357,28 @@ class MyMainWindow(QMainWindow):
             'FJ-STD': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'provia', 'best.pth'),  # PROVIA
             'FJ-V': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'velvia', 'best.pth'),  # VELVIA
             'FJ-Pro400H': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'pro400h', 'best.pth'),  # VELVIA
-            'FJ-Superia400': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'superia400', 'best.pth'),  # VELVIA
+            'FJ-Superia400': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'superia400', 'best.pth'),    # VELVIA
             'FJ-C100': '',
             'FJ-C200': '',
             'FJ-C400': '',
             'FJ-Provia400X': '',
+            # Kodak Filters
+            'KD-ColorPlus': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'colorplus', 'best.pth'), # color plus
+            'KD-Gold200': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'gold200', 'best.pth'),  # gold 200
+            'KD-UltraMax400': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'ultramax400', 'best.pth'), # ultramax 400
+            'KD-Portra400': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'portra400', 'best.pth'), # portra 400
+            'KD-Portra160NC': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'portra160nc', 'best.pth'), # portra 160nc
+            'KD-E100': '',
+            'KD-Ektar100': '',
 
-            # Richo Filters
+            # # Digital
+            # # Olympus Filters
+            # "OM-VIVID": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'vivid', 'best.pth'),  # 浓郁色彩
+            # "OM-SoftFocus": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'soft-focus', 'best.pth'),  # 柔焦
+            # "OM-SoftLight": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'soft-light', 'best.pth'),  # 柔光
+            # "OM-Nostalgia": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'nostalgia', 'best.pth'),   # 怀旧颗粒
+            # "OM-Stereoscopic": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'stereoscopic', 'best.pth'), # 立体
+            # # Richo Filters
             # 'R-Std': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'std', 'best.pth'),  # 标准
             # 'R-Vivid': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'vivid', 'best.pth'),  # 鲜艳
             # 'R-Single': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'single', 'best.pth'),  # 单色
@@ -374,26 +390,14 @@ class MyMainWindow(QMainWindow):
             # 'R-Nostalgia': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'nostalgia', 'best.pth'),  # 怀旧
             # 'R-HDR': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'hdr', 'best.pth'),  # HDR
             # 'R-Pos2Neg': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'pos2neg', 'best.pth'),  # 正负逆冲
-
-            # Canon Filters
+            # # Canon Filters
             # 'Canon': os.path.join(file_path, 'static', 'checkpoints', 'canon', 'best.pth'),  # 佳能
-
-            # Sony Filters
+            # # Sony Filters
             # 'Sony': os.path.join(file_path, 'static', 'checkpoints', 'sony', 'best.pth'),  # 索尼
-
-            # Nikon Filters
+            # # Nikon Filters
             # 'Nikon': os.path.join(file_path, 'static', 'checkpoints', 'nikon', 'best.pth'),  # 尼康
-
-            # Kodak Filters
-            'KD-ColorPlus':os.path.join(file_path, 'static', 'checkpoints', 'kodak','colorplus', 'best.pth'),  # color plus
-            'KD-Gold200': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'gold200', 'best.pth'),    # gold 200
-            'KD-UltraMax400': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'ultramax400', 'best.pth'),  # ultramax 400
-            'KD-Portra400': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'portra400', 'best.pth'), # portra 400
-            'KD-Portra160NC': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'portra160nc', 'best.pth'),# portra 160nc
-            'KD-E100': '',
-            'KD-Ektar100': '',
-
         }
+        self.gray_list = ['FJ-A']
         self.model.load_state_dict(
             state_dict=torch.load(self.checkpoints_dict[self.default_filter], map_location=self.device))
         self.set4layout()
@@ -610,7 +614,7 @@ class MyMainWindow(QMainWindow):
                         except:
                             continue
                     self.predict_image = l
-                    self.display4image(os.path.join(file_path, 'static', 'src','file_temp2.png'))
+                    self.display4image(os.path.join(file_path, 'static', 'src', 'file_temp2.png'))
                 else:
                     try:
                         Image.open(self.predict_image)
@@ -648,11 +652,11 @@ class MyMainWindow(QMainWindow):
             # name = '.'.join(os.path.basename(self.predict_image).split('.')[:-1]) + f'_{self.default_filter}.jpg'
             # self.save_path = os.path.join(save_dir, name)
             self.save_path = self.predict_image[0] if len(self.predict_image) == 1 else os.path.join(file_path,
-                                                                                                     'static','src',
+                                                                                                     'static', 'src',
                                                                                                      'file_temp1.png')
 
             self.prediction_thread = PredictionThread(self.predict_image, self.model, self.device,
-                                                      self.quality_num,self.default_filter)
+                                                      self.quality_num, self.default_filter)
             self.prediction_thread.worker.update_progress.connect(self.update_progress_bar)
             self.prediction_thread.finished.connect(lambda: self.display4image(self.save_path))
             self.start_button.setEnabled(False)
@@ -676,8 +680,11 @@ class MyMainWindow(QMainWindow):
                 pth_name = self.checkpoints_dict[self.default_filter]
                 if self.default_filter == 'FilmMask':
                     self.model = FilmMask()
+                # todo add gray-channel to the list
+                elif self.default_filter in self.gray_list:
+                    self.model = FilterSimulation(channel=1)
                 else:
-                    self.model = FilterSimulation()
+                    self.model = FilterSimulation(channel=3)
                 self.model.load_state_dict(
                     state_dict=torch.load(pth_name, map_location=self.device))
                 button.setStyleSheet("QPushButton { border-image: url("

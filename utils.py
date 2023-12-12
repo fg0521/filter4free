@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from PIL import Image
 import os
-from matplotlib import pyplot as plt
+import matplotlib.pyplot as plt
 
 
 def images2gif(dir, gif_name, resize=(200, 200)):
@@ -99,6 +99,18 @@ def add_frame(image):
     frame.paste(img, (200, 200))
     frame.save('/Users/maoyufeng/Downloads/res.png', quality=100)
 
+def drew_loss():
+    with open('/Users/maoyufeng/Downloads/用所选项目新建的文件夹/epoch对比/epoch8_train_loss.txt') as f:
+        training_loss = [float(i) for i in f.read().split('\n') if i][:155]
+    f.close()
+    with open('/Users/maoyufeng/Downloads/用所选项目新建的文件夹/epoch对比/epoch16_train_loss.txt') as f:
+        eval_loss =[float(i) for i in f.read().split('\n') if i][:155]
+    f.close()
+    plt.plot(np.array(range(155)), np.array(training_loss), c='r')  # 参数c为color简写，表示颜色,r为red即红色
+    plt.plot(np.array(range(len(eval_loss))), np.array(eval_loss), c='b')  # 参数c为color简写，表示颜色,r为red即红色
+    plt.legend(labels=['epoch8_train_loss','epoch16_train_loss'])
+    # plt.show()
+    plt.savefig('/Users/maoyufeng/Downloads/train_loss.png')
 
 if __name__ == '__main__':
     # images2gif(dir='test/canon',
@@ -112,6 +124,4 @@ if __name__ == '__main__':
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test/19416.jpg',show=True)
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test/small-rgb-new2.jpg',show=True)
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test/small-rgb-new3.jpg',show=True)
-    for img in os.listdir('/Users/maoyufeng/Downloads/2'):
-        if img.endswith('png'):
-            add_chosen_status(os.path.join('/Users/maoyufeng/Downloads/2',img))
+    drew_loss()

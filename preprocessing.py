@@ -224,12 +224,12 @@ class Processor():
 
 if __name__ == '__main__':
     p = Processor(mode='order', clip_size=700)
-    for key in ['astia', 'classic-chrome', 'classic-neg', 'enerna', 'pro-neg-std', 'pro-neg-hi']:
+    for key in ['acros']:
         p.run(input_path=f'/Users/maoyufeng/slash/dataset/org_dataset/{key}',
               output_path=f'/Users/maoyufeng/slash/dataset/train_dataset/{key}',
               min_byte=50.0,concat=True,clip=True,align=False,sharpen=False)
 
-    # for key in ['astia','classic-chrome','classic-neg','enerna','pro-neg-std','pro-neg-hi']:
+    # for key in ['acros']:
     #     path= '/Users/maoyufeng/slash/dataset/org_dataset/{}'.format(key)
     #     for file in os.listdir(path):
     #         if file.endswith('jpg'):

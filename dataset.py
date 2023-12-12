@@ -10,7 +10,7 @@ from PIL import Image
 import torchvision.transforms as transforms
 
 transform = transforms.Compose([
-    transforms.Resize((640, 640)),
+    transforms.Resize((700, 700)),
     transforms.ToTensor(),
     # transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
@@ -38,7 +38,7 @@ class MaskDataset(Dataset):
         if self.channel == 'rgb':
             org_tensor = transform(Image.open(data['org_image']))
             goal_tensor = transform(Image.open(data['goal_image']))
-        else:
+        elif self.channel == 'lab':
             # resize
             org_im = Image.open(data['org_image']).resize((self.resize, self.resize))
             goal_im = Image.open(data['goal_image']).resize((self.resize, self.resize))
@@ -51,6 +51,9 @@ class MaskDataset(Dataset):
             # to tensor
             org_tensor = torch.from_numpy(org_im).permute(2, 0, 1).to(torch.float32)
             goal_tensor = torch.from_numpy(goal_im).permute(2, 0, 1).to(torch.float32)
+        elif self.channel =='gray':
+            org_tensor = transform(Image.open(data['org_image']).convert(mode='L'))
+            goal_tensor = transform(Image.open(data['goal_image']).convert(mode='L'))
         return org_tensor, goal_tensor
 
     def __len__(self):
