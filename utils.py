@@ -99,18 +99,25 @@ def add_frame(image):
     frame.paste(img, (200, 200))
     frame.save('/Users/maoyufeng/Downloads/res.png', quality=100)
 
+
 def drew_loss():
-    with open('/Users/maoyufeng/Downloads/用所选项目新建的文件夹/epoch对比/epoch8_train_loss.txt') as f:
-        training_loss = [float(i) for i in f.read().split('\n') if i][:155]
+    with open('/Users/maoyufeng/Downloads/实验/lr对比/lr0.001_train_loss.txt') as f:
+        training_loss1 = [float(i) for i in f.read().split('\n') if i][:155]
     f.close()
-    with open('/Users/maoyufeng/Downloads/用所选项目新建的文件夹/epoch对比/epoch16_train_loss.txt') as f:
-        eval_loss =[float(i) for i in f.read().split('\n') if i][:155]
+    with open('/Users/maoyufeng/Downloads/实验/lr对比/lr0.002_train_loss.txt') as f:
+        training_loss2 = [float(i) for i in f.read().split('\n') if i][:155]
     f.close()
-    plt.plot(np.array(range(155)), np.array(training_loss), c='r')  # 参数c为color简写，表示颜色,r为red即红色
-    plt.plot(np.array(range(len(eval_loss))), np.array(eval_loss), c='b')  # 参数c为color简写，表示颜色,r为red即红色
-    plt.legend(labels=['epoch8_train_loss','epoch16_train_loss'])
+    with open('/Users/maoyufeng/Downloads/实验/lr对比/lr0.0005_train_loss.txt') as f:
+        training_loss3 = [float(i) for i in f.read().split('\n') if i][:155]
+    f.close()
+    plt.plot(np.array(range(len(training_loss3))), np.array(training_loss3), c='r')  # 参数c为color简写，表示颜色,r为red即红色
+    plt.plot(np.array(range(len(training_loss1))), np.array(training_loss1), c='g')  # 参数c为color简写，表示颜色,r为red即红色
+    plt.plot(np.array(range(len(training_loss2))), np.array(training_loss2), c='b')  # 参数c为color简写，表示颜色,r为red即红色
+    plt.legend(labels=['lr0.0005','lr0.001', 'lr0.002'])
+    plt.xlabel('Train Loss')
     # plt.show()
     plt.savefig('/Users/maoyufeng/Downloads/train_loss.png')
+
 
 if __name__ == '__main__':
     # images2gif(dir='test/canon',
@@ -125,3 +132,23 @@ if __name__ == '__main__':
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test/small-rgb-new2.jpg',show=True)
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test/small-rgb-new3.jpg',show=True)
     drew_loss()
+
+    # fig, ax = plt.subplots(4, 4)
+    # for i in range(4):
+    #     ax[i,0].imshow(np.array(Image.open(f'/Users/maoyufeng/Downloads/实验/{i+1}_org.jpg')))  # ,cmp='gray')
+    #     ax[i,0].set_xlabel('original')
+    #     ax[i,0].set_xticks([])
+    #     ax[i,0].set_yticks([])
+    #     ax[i,1].imshow(np.array(Image.open(f'/Users/maoyufeng/Downloads/实验/{i+1}_real.jpg')))
+    #     ax[i,1].set_xlabel('real')
+    #     ax[i,1].set_xticks([])
+    #     ax[i,1].set_yticks([])
+    #     ax[i,2].imshow(np.array(Image.open(f'/Users/maoyufeng/Downloads/实验/{i+1}_rgb.jpg')))
+    #     ax[i,2].set_xlabel('rgb')
+    #     ax[i,2].set_xticks([])
+    #     ax[i,2].set_yticks([])
+    #     ax[i,3].imshow(np.array(Image.open(f'/Users/maoyufeng/Downloads/实验/{i+1}_lab.jpg')))
+    #     ax[i,3].set_xlabel('lab')
+    #     ax[i,3].set_xticks([])
+    #     ax[i,3].set_yticks([])
+    # plt.show()

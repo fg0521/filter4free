@@ -93,6 +93,7 @@ class Trainer:
         flag = 0
         training_loss,eval_loss = [],[]
         for epoch in range(num_epochs):
+            self.model.train()
             loss_list = [[], []]
             pbar = tqdm(total=len(train_loader), desc=f"Epoch: {epoch + 1}: ")
             epoch_loss = []
@@ -197,5 +198,5 @@ if __name__ == '__main__':
                       save_model_path='static/checkpoints/fuji/acros',
                       pretrained_model_path=None,
                       channel='gray')
-    trainer.train(epoch=200, lr=0.002, batch_size=8, eval_step=5, early_stop_step=50)
+    trainer.train(epoch=200, lr=0.001, batch_size=8, eval_step=5, early_stop_step=50)
 

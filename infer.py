@@ -132,7 +132,7 @@ if __name__ == '__main__':
         device = torch.device('mps')
     else:
         device = torch.device('cpu')
-    pth = torch.load('static/checkpoints/fuji/eterna-bleach-bypass/best.pth', map_location=device)
+    pth = torch.load('static/checkpoints/fuji/velvia/best.pth', map_location=device)
     channel = pth['decoder.4.bias'].shape[0]
     model = FilterSimulation(channel=channel)
     model.load_state_dict(pth, strict=False)
@@ -140,8 +140,8 @@ if __name__ == '__main__':
     model.eval()
     st = time.time()
     # Image.open('/Users/maoyufeng/Downloads/DSCF0049_org.jpg').convert('L').save('/Users/maoyufeng/Downloads/DSCF0049_org3.jpg')
-    target = infer(image='/Users/maoyufeng/Downloads/DSCF0049_org.jpg', model=model, channels=channel)
+    target = infer(image='/Users/maoyufeng/Downloads/iShot_2023-12-15_15.20.11.jpg', model=model, channels=channel)
     print(time.time() - st)
     # target.show()
-    target.save('/Users/maoyufeng/Downloads/DSCF0049_org22.jpg', quality=100)
+    target.save('/Users/maoyufeng/Downloads/23323232333.jpg', quality=100)
 

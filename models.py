@@ -96,7 +96,8 @@ class FilterSimulation(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(64, 64, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=1, stride=1)
+            # nn.MaxPool2d(kernel_size=1, stride=1)
+            nn.Dropout(0.1)
         )
         self.decoder = nn.Sequential(
             nn.Conv2d(64, 32, kernel_size=3, padding=1),
@@ -120,58 +121,6 @@ class FilterSimulation(nn.Module):
 
 
 
-class FilterSimulationLarge(nn.Module):
-    """
-    滤镜模拟
-    AdamW: lr=0.002
-    loss: MSELoss+EMDLoss
-    训练数据: 64张图片
-    训练通道: RGB
-    epoch: 100
-    """
-
-    def __init__(self, training=False,channel=3):
-        super(FilterSimulationLarge, self).__init__()
-        self.encoder = nn.Sequential(
-            nn.Conv2d(channel, 32, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(32,32, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 64, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(128, 128, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2)
-        )
-        self.decoder = nn.Sequential(
-            nn.Conv2d(128, 128, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2),
-            # nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=1, stride=1),
-            nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2),
-            # nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(32, channel, kernel_size=2, stride=2),
-            nn.MaxPool2d(kernel_size=1, stride=1),
-        )
-        if training:
-            for net in ['self.encoder', 'self.decoder']:
-                for n in eval(net):
-                    if n._get_name() in ['Conv2d', 'ConvTranspose2d']:
-                        nn.init.kaiming_uniform_(n.weight, mode='fan_in', nonlinearity='relu')
-
-    def forward(self, x):
-        # 编码器
-        x1 = self.encoder(x)
-        # 解码器
-        x2 = self.decoder(x1)
-        return x2
 
 if __name__ == '__main__':
     # input = torch.rand((3,224,224))

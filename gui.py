@@ -4,10 +4,9 @@ import time
 import cv2
 import torch
 from PIL import Image
-from PyQt5 import QtCore
 from PyQt5.QtWidgets import QMainWindow, QButtonGroup, \
     QScrollArea, QPushButton, QLabel, QMessageBox, QApplication, QWidget, QHBoxLayout, QVBoxLayout, QSlider
-from PyQt5.QtCore import pyqtSignal, QObject, QThread, pyqtProperty, QSize, Qt, QRectF
+from PyQt5.QtCore import pyqtSignal, QObject, QThread, pyqtProperty, QSize, Qt, QRectF, QEvent
 from infer import image2block
 from models import FilterSimulation, FilmMask
 from PyQt5.QtGui import QColor, QPainter, QFont, QPixmap
@@ -112,13 +111,16 @@ class PercentProgressBar(QWidget):
             acolor.setAlphaF(0.2)
             pen.setColor(acolor)
             painter.setPen(pen)
-            painter.drawArc(rect, (0 - arcLength) *
-                            16, -(360 - arcLength) * 16)
+            # painter.drawArc(rect, (0 - arcLength) *
+            #                 16, -(360 - arcLength) * 16)
+            painter.drawArc(rect, int((0 - arcLength) *
+                                      16), int(-(360 - arcLength) * 16))
 
         # 绘制当前进度圆弧
         pen.setColor(self.BorderColor)
         painter.setPen(pen)
-        painter.drawArc(rect, 0, -arcLength * 16)
+        # painter.drawArc(rect, 0, -arcLength * 16)
+        painter.drawArc(rect, 0, int(-arcLength * 16))
 
         # 绘制进度圆弧前面的小圆
         if self.ShowSmallCircle:
@@ -265,7 +267,7 @@ class PredictionWorker(QObject):
 
     def predict(self, model, device, image_list, filter_name, quality=100, padding=16, patch_size=640, batch=8):
         model = model.to(device)
-        if list(model.state_dict().keys())[-1]=='decoder.4.bias':
+        if list(model.state_dict().keys())[-1] == 'decoder.4.bias':
             channels = model.state_dict()['decoder.4.bias'].shape[0]
         else:
             channels = 3
@@ -298,8 +300,12 @@ class PredictionWorker(QObject):
                         else:
                             out = out[padding:h - padding, padding:w - padding]
                         target.paste(Image.fromarray(out), (x, y))
-
-                    each_end = int(min(end, each_start + (end - start) * min(1.0, (i + 1) / len(split_images)))) + 1
+                    if end == 100:
+                        each_end = 101
+                    else:
+                        each_end = int(min(end, each_start + (end - start) * min(1.0, (i + 1) / len(split_images)))) + 1
+                    # print(end)
+                    # print(each_start + (end - start) * min(1.0, (i + 1) / len(split_images)))
                     for num in range(each_start, each_end):
                         # print(each_start,'\t',each_end)
                         self.update_progress.emit(num)
@@ -346,28 +352,37 @@ class MyMainWindow(QMainWindow):
             'FilmMask': os.path.join(file_path, 'static', 'checkpoints', 'film-mask', 'best.pth'),  # 去色罩
             # Fuji Filters
             'FJ-A': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'acros', 'best.pth'),  # ACROS
-            'FJ-CC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-chrome', 'best.pth'),    # CLASSIC CHROME
+            'FJ-CC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-chrome', 'best.pth'),
+            # CLASSIC CHROME
             'FJ-E': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'eterna', 'best.pth'),  # ETERNA
-            'FJ-EB': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'eterna-bleach-bypass', 'best.pth'),  # ETERNA BLEACH BYPASS
-            'FJ-NC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-neg', 'best.pth'),   # CLASSIC Neg.
+            'FJ-EB': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'eterna-bleach-bypass', 'best.pth'),
+            # ETERNA BLEACH BYPASS
+            'FJ-NC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-neg', 'best.pth'),
+            # CLASSIC Neg.
             'FJ-NH': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'pro-neg-hi', 'best.pth'),  # PRO Neg.Hi
-            'FJ-NN': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'nostalgic-neg', 'best.pth'), # NOSTALGIC Neg.
+            'FJ-NN': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'nostalgic-neg', 'best.pth'),
+            # NOSTALGIC Neg.
             'FJ-NS': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'pro-neg-std', 'best.pth'),  # PRO Neg.Std
             'FJ-S': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'astia', 'best.pth'),  # ASTIA
             'FJ-STD': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'provia', 'best.pth'),  # PROVIA
             'FJ-V': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'velvia', 'best.pth'),  # VELVIA
             'FJ-Pro400H': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'pro400h', 'best.pth'),  # VELVIA
-            'FJ-Superia400': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'superia400', 'best.pth'),    # VELVIA
+            'FJ-Superia400': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'superia400', 'best.pth'),
+            # VELVIA
             'FJ-C100': '',
             'FJ-C200': '',
             'FJ-C400': '',
             'FJ-Provia400X': '',
             # Kodak Filters
-            'KD-ColorPlus': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'colorplus', 'best.pth'), # color plus
+            'KD-ColorPlus': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'colorplus', 'best.pth'),
+            # color plus
             'KD-Gold200': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'gold200', 'best.pth'),  # gold 200
-            'KD-UltraMax400': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'ultramax400', 'best.pth'), # ultramax 400
-            'KD-Portra400': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'portra400', 'best.pth'), # portra 400
-            'KD-Portra160NC': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'portra160nc', 'best.pth'), # portra 160nc
+            'KD-UltraMax400': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'ultramax400', 'best.pth'),
+            # ultramax 400
+            'KD-Portra400': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'portra400', 'best.pth'),
+            # portra 400
+            'KD-Portra160NC': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'portra160nc', 'best.pth'),
+            # portra 160nc
             'KD-E100': '',
             'KD-Ektar100': '',
 
@@ -614,7 +629,7 @@ class MyMainWindow(QMainWindow):
                         except:
                             continue
                     self.predict_image = l
-                    self.display4image(os.path.join(file_path, 'static', 'src', 'file_temp2.png'))
+                    self.display4image(os.path.join(file_path, 'static', 'src', 'file_temp1.png'))
                 else:
                     try:
                         Image.open(self.predict_image)
@@ -639,7 +654,7 @@ class MyMainWindow(QMainWindow):
 
     def resizeEvent(self, e):
         # 改变窗口大小后QLabel中的图片重新加载
-        if e.type() == QtCore.QEvent.Resize:
+        if e.type() == QEvent.Resize:
             if os.path.exists(self.save_path):
                 self.display4image(self.save_path)
             elif os.path.exists(self.predict_image):
@@ -648,13 +663,12 @@ class MyMainWindow(QMainWindow):
     def start_prediction(self):
 
         if self.predict_image:
-            # dir_path = os.path.dirname(self.predict_image[0])
-            # name = '.'.join(os.path.basename(self.predict_image).split('.')[:-1]) + f'_{self.default_filter}.jpg'
-            # self.save_path = os.path.join(save_dir, name)
-            self.save_path = self.predict_image[0] if len(self.predict_image) == 1 else os.path.join(file_path,
-                                                                                                     'static', 'src',
-                                                                                                     'file_temp1.png')
 
+            if len(self.predict_image) == 1:
+                file_name, file_type = os.path.splitext(self.predict_image[0])
+                self.save_path = f"{file_name}_{self.default_filter}{file_type}"
+            else:
+                self.save_path = os.path.join(file_path, 'static', 'src', 'file_temp2.png')
             self.prediction_thread = PredictionThread(self.predict_image, self.model, self.device,
                                                       self.quality_num, self.default_filter)
             self.prediction_thread.worker.update_progress.connect(self.update_progress_bar)
