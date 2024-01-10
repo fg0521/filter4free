@@ -1,8 +1,12 @@
 import cv2
 import numpy as np
+import torch
 from PIL import Image
 import os
 import matplotlib.pyplot as plt
+import torch.nn.functional as F
+
+
 
 
 def images2gif(dir, gif_name, resize=(200, 200)):
@@ -100,24 +104,37 @@ def add_frame(image):
     frame.save('/Users/maoyufeng/Downloads/res.png', quality=100)
 
 
-def drew_loss():
-    with open('/Users/maoyufeng/Downloads/实验/lr对比/lr0.001_train_loss.txt') as f:
-        training_loss1 = [float(i) for i in f.read().split('\n') if i][:155]
+def drew_loss(filter_name,train,eval):
+    with open(train) as f:
+        train_loss = [float(i) for i in f.read().split('\n') if i]
     f.close()
-    with open('/Users/maoyufeng/Downloads/实验/lr对比/lr0.002_train_loss.txt') as f:
-        training_loss2 = [float(i) for i in f.read().split('\n') if i][:155]
+    with open(eval) as f:
+        eval_loss = [float(i) for i in f.read().split('\n') if i]
     f.close()
-    with open('/Users/maoyufeng/Downloads/实验/lr对比/lr0.0005_train_loss.txt') as f:
-        training_loss3 = [float(i) for i in f.read().split('\n') if i][:155]
-    f.close()
-    plt.plot(np.array(range(len(training_loss3))), np.array(training_loss3), c='r')  # 参数c为color简写，表示颜色,r为red即红色
-    plt.plot(np.array(range(len(training_loss1))), np.array(training_loss1), c='g')  # 参数c为color简写，表示颜色,r为red即红色
-    plt.plot(np.array(range(len(training_loss2))), np.array(training_loss2), c='b')  # 参数c为color简写，表示颜色,r为red即红色
-    plt.legend(labels=['lr0.0005','lr0.001', 'lr0.002'])
-    plt.xlabel('Train Loss')
-    # plt.show()
-    plt.savefig('/Users/maoyufeng/Downloads/train_loss.png')
+    plt.plot(np.array(range(len(train_loss))), np.array(train_loss), c='r')  # 参数c为color简写，表示颜色,r为red即红色
+    plt.plot(np.array(range(len(eval_loss))), np.array(eval_loss), c='b')  # 参数c为color简写，表示颜色,r为red即红色
+    plt.legend(labels=['train_loss','eval_loss'])
+    plt.xlabel(filter_name)
+    path = os.path.dirname(train)
+    plt.savefig(os.path.join(path,f'{filter_name}_loss.png'))
 
+
+
+def cal_l1loss(model,org_path,real_path,checkpoint_path):
+    if torch.cuda.is_available():
+        device = torch.device('cuda:0')
+    elif torch.backends.mps.is_available():
+        device = torch.device('mps')
+    else:
+        device = torch.device('cpu')
+    model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+    model.to(device)
+    model.eval()
+    target = infer(image=org_path, model=model, channels=3,device=device)
+    target_tensor =torch.tensor(np.asarray(target), dtype=torch.float32)
+    real_tensor = torch.tensor(cv2.cvtColor(cv2.imread(real_path),cv2.COLOR_BGR2RGB), dtype=torch.float32)
+    l1_loss = F.l1_loss(real_tensor,target_tensor)
+    return l1_loss
 
 if __name__ == '__main__':
     # images2gif(dir='test/canon',
@@ -131,24 +148,11 @@ if __name__ == '__main__':
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test/19416.jpg',show=True)
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test/small-rgb-new2.jpg',show=True)
     # image2hsit(img='/Users/maoyufeng/slash/dataset/色罩/test/small-rgb-new3.jpg',show=True)
-    drew_loss()
+    drew_loss(filter_name='nostalgic-neg',
+              train='static/checkpoints/fuji/nostalgic-neg/train_loss.txt',
+              eval='static/checkpoints/fuji/nostalgic-neg/eval_loss.txt')
 
-    # fig, ax = plt.subplots(4, 4)
-    # for i in range(4):
-    #     ax[i,0].imshow(np.array(Image.open(f'/Users/maoyufeng/Downloads/实验/{i+1}_org.jpg')))  # ,cmp='gray')
-    #     ax[i,0].set_xlabel('original')
-    #     ax[i,0].set_xticks([])
-    #     ax[i,0].set_yticks([])
-    #     ax[i,1].imshow(np.array(Image.open(f'/Users/maoyufeng/Downloads/实验/{i+1}_real.jpg')))
-    #     ax[i,1].set_xlabel('real')
-    #     ax[i,1].set_xticks([])
-    #     ax[i,1].set_yticks([])
-    #     ax[i,2].imshow(np.array(Image.open(f'/Users/maoyufeng/Downloads/实验/{i+1}_rgb.jpg')))
-    #     ax[i,2].set_xlabel('rgb')
-    #     ax[i,2].set_xticks([])
-    #     ax[i,2].set_yticks([])
-    #     ax[i,3].imshow(np.array(Image.open(f'/Users/maoyufeng/Downloads/实验/{i+1}_lab.jpg')))
-    #     ax[i,3].set_xlabel('lab')
-    #     ax[i,3].set_xticks([])
-    #     ax[i,3].set_yticks([])
-    # plt.show()
+    loss = cal_l1loss(org_path='/Users/maoyufeng/slash/dataset/org_dataset/common/DSCF0132_org.jpg',
+                      real_path='/Users/maoyufeng/slash/dataset/org_dataset/superia400/DSCF0132.jpg',
+                      checkpoint_path='static/checkpoints/fuji/superia400/best.pth')
+    print(loss)

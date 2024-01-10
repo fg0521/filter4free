@@ -20,16 +20,16 @@
 5. Stereoscopic-立体 ❎
 
 ###### 富士色彩模拟
-1. ACROS **static/checkpoints/fuji/acros/best.pth** ✅
-2. CLASSIC CHROME **static/checkpoints/fuji/classic-chrome/best.pth** ✅
-3. ETERNA **static/checkpoints/fuji/eterna/best.pth** ✅
-4. ETERNA BLEACH BYPASS **static/checkpoints/fuji/eterna-bleach-bypass/best.pth** ✅
-5. CLASSIC Neg. **static/checkpoints/fuji/classic-neg/best.pth** ✅
-6. PRO Neg.Hi **static/checkpoints/fuji/pro-neg-hi/best.pth** ✅
+1. ACROS 
+2. CLASSIC CHROME 
+3. ETERNA 
+4. ETERNA BLEACH BYPASS 
+5. CLASSIC Neg. 
+6. PRO Neg.Hi 
 7. NOSTALGIC Neg.：**static/checkpoints/fuji/nostalgic-neg/best.pth** ✅
-8. PRO Neg.Std **static/checkpoints/fuji/pro-neg-std/best.pth** ✅
-9. ASTIA **static/checkpoints/fuji/astia/best.pth** ✅
-10. PROVIA：**static/checkpoints/fuji/provia/best.pth** ✅
+8. PRO Neg.Std 
+9. ASTIA 
+10. PROVIA：
 11. VELVIA：**static/checkpoints/fuji/velvia/best.pth** ✅
 12. Pro 400H：**static/checkpoints/fuji/pro400h/best.pth** ✅
 13. Superia 400：**static/checkpoints/fuji/superia400/best.pth** ✅
@@ -39,7 +39,8 @@
 1. Color Plus：**static/checkpoints/kodak/colorplus/best.pth** ✅
 2. Gold 200：**static/checkpoints/kodak/gold200/best.pth** ✅
 3. Portra 400：**static/checkpoints/kodak/portra400/best.pth** ✅
-4. Portra 160NC：**static/checkpoints/kodak/portra160nc/best.pth** ✅
+4. Portra 160NC：**static/checkpoints/kodak/portra160nc/best.pth** ✅ 
+5. UltraMax 400：**static/checkpoints/kodak/ultramax400/best.pth** ✅
 
 ###### 理光色彩模拟
 1. Std-标准 ❎

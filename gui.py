@@ -7,8 +7,8 @@ from PIL import Image
 from PyQt5.QtWidgets import QMainWindow, QButtonGroup, \
     QScrollArea, QPushButton, QLabel, QMessageBox, QApplication, QWidget, QHBoxLayout, QVBoxLayout, QSlider
 from PyQt5.QtCore import pyqtSignal, QObject, QThread, pyqtProperty, QSize, Qt, QRectF, QEvent
-from infer import image2block
-from models import FilterSimulation, FilmMask
+from utils import image2block
+from models import FilterSimulation
 from PyQt5.QtGui import QColor, QPainter, QFont, QPixmap
 import json
 
@@ -692,10 +692,8 @@ class MyMainWindow(QMainWindow):
             if button is clicked_button:
                 self.default_filter = filter_name.replace('-ORG', '').replace('.png', '')
                 pth_name = self.checkpoints_dict[self.default_filter]
-                if self.default_filter == 'FilmMask':
-                    self.model = FilmMask()
                 # todo add gray-channel to the list
-                elif self.default_filter in self.gray_list:
+                if self.default_filter in self.gray_list:
                     self.model = FilterSimulation(channel=1)
                 else:
                     self.model = FilterSimulation(channel=3)

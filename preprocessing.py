@@ -1,3 +1,4 @@
+import copy
 import math
 import os
 import random
@@ -18,9 +19,10 @@ def laplacian(img, size=1):
 
 class Processor():
 
-    def __init__(self, mode='order', clip_size=512):
+    def __init__(self, mode='order', clip_size=512,align_size=30):
         self.mode = mode  # random：随机裁剪  order：顺序裁剪
-        self.clip_size = clip_size
+        self.clip_size = clip_size+2*align_size
+        self.align_size = align_size
         self.clip_num = 30
         self.max_clip_size = 1200
 
@@ -86,9 +88,9 @@ class Processor():
             goal_im = cv2.resize(goal_im, org_im.shape[:2][::-1])
         return org_im, goal_im
 
-    def run(self, input_path, output_path, clip=True, concat=True, rotate=True, sharpen=True,
+    def run(self, input_path, output_path, clip=True, concat=False, rotate=True, sharpen=False,
             align=False, min_byte=50.0):
-        file_list = [i for i in os.listdir(input_path) if i.lower().endswith('_org.jpg')]
+        file_list = sorted([i for i in os.listdir(input_path) if i.lower().endswith('_org.jpg')])
         if not os.path.exists(output_path):
             os.mkdir(output_path)
         for mode in ['train', 'val']:
@@ -100,6 +102,8 @@ class Processor():
                 img_name = org_img_name.replace('_org', '')
                 org_im = cv2.imread(os.path.join(input_path, org_img_name))
                 goal_im = cv2.imread(os.path.join(input_path, img_name))
+                if org_im is None or goal_im is None:
+                    continue
                 if org_im.shape != goal_im.shape:
                     org_im, goal_im = self.add_resize(org_im=org_im, goal_im=goal_im)
                 H, W, C = org_im.shape
@@ -122,8 +126,8 @@ class Processor():
                 elif self.mode == 'order':
                     for x in range(0, W, self.clip_size)[:-1]:
                         for y in range(0, H, self.clip_size)[:-1]:
-                            org_im_split = org_im[y:self.clip_size, x:x + self.clip_size]
-                            goal_im_split = goal_im[y:self.clip_size, x:x + self.clip_size]
+                            org_im_split = org_im[y:y+self.clip_size, x:x + self.clip_size]
+                            goal_im_split = goal_im[y:y+self.clip_size, x:x + self.clip_size]
                             if org_im_split.any() and goal_im_split.any():
                                 cnt += 1
                                 if cnt % 10 == 0:
@@ -134,12 +138,14 @@ class Processor():
                 for mode in ['train', 'val']:
                     for org_im, goal_im in eval(mode):
                         if align:
-                            try:
-                                org_im = self.add_align(org_img=org_im, goal_img=goal_im)
-                                org_im = org_im[20:org_im.shape[0]-20,20:org_im.shape[1]-20,:]
-                                goal_im = goal_im[20:goal_im.shape[0]-20,20:goal_im.shape[1]-20,:]
-                            except:
-                                pass
+                            org_im_cp = org_im[self.align_size:org_im.shape[0] - self.align_size, self.align_size:org_im.shape[1] - self.align_size, :]
+                            org_im = self.add_align(org_img=org_im, goal_img=goal_im)
+                            org_im = org_im[self.align_size:org_im.shape[0] - self.align_size, self.align_size:org_im.shape[1] - self.align_size, :]
+                            goal_im = goal_im[self.align_size:goal_im.shape[0] - self.align_size, self.align_size:goal_im.shape[1] - self.align_size, :]
+                            diff = abs(np.sum(org_im_cp/255.0-org_im/255.0))
+                            if diff==0 or diff>3e3 or np.sum(org_im==0)>3000:
+                                continue
+
 
                         if random.random() >= 0.5 and rotate:
                             org_im, goal_im = self.add_rotate([org_im, goal_im])
@@ -149,9 +155,9 @@ class Processor():
                         name = str(time.time()).replace('.', '')
                         cv2.imwrite(os.path.join(output_path, mode, name + '_org.jpg'), org_im)
                         cv2.imwrite(os.path.join(output_path, mode, name + '.jpg'), goal_im)
-                        if os.path.getsize(os.path.join(output_path, mode, name + '_org.jpg')) / 1024 < min_byte:
-                            os.remove(os.path.join(output_path, mode, name + '_org.jpg'))
-                            os.remove(os.path.join(output_path, mode, name + '.jpg'))
+                        # if os.path.getsize(os.path.join(output_path, mode, name + '_org.jpg')) / 1024 < min_byte:
+                        #     os.remove(os.path.join(output_path, mode, name + '_org.jpg'))
+                        #     os.remove(os.path.join(output_path, mode, name + '.jpg'))
         if concat:
             for i in tqdm(range(500), desc='数据拼接'):
                 img_num = set()
@@ -168,10 +174,10 @@ class Processor():
                         org_im, goal_im = self.add_rotate([org_im, goal_im])
                     if random.random() >= 0.5 and sharpen:
                         org_im, goal_im = self.add_sharpen([org_im, goal_im])
-                    if org_im.shape==(250,250,3) and goal_im.shape==(250,250,3):
+                    if org_im.shape == (250, 250, 3) and goal_im.shape == (250, 250, 3):
                         org_list.append(org_im)
                         goal_list.append(goal_im)
-                if len(org_list)==9:
+                if len(org_list) == 9:
                     org_im = self.add_concat(org_list)
                     goal_im = self.add_concat(goal_list)
                     name = str(time.time()).replace('.', '')
@@ -199,39 +205,40 @@ class Processor():
         index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
         search_params = dict(checks=50)
         flann = cv2.FlannBasedMatcher(index_params, search_params)
-        matches = flann.knnMatch(descriptors1, descriptors2, k=2)
-
-        # 选择好的匹配
-        good_matches = []
-        for m, n in matches:
-            if m.distance < 0.7 * n.distance:
-                good_matches.append(m)
-
-        # 提取关键点的坐标
-        src_pts = np.float32([keypoints1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-        dst_pts = np.float32([keypoints2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-
-        if len(src_pts)>4 and len(dst_pts)>4:
-            # 使用RANSAC算法进行变换估计
-            M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
-
-            # 使用得到的变换矩阵进行透视变换
-            image_org_aligned = cv2.warpPerspective(image_org, M, (image_goal.shape[1], image_goal.shape[0]))
-            return image_org_aligned
-        else:
+        if descriptors1 is None or descriptors2 is None:
             return image_org
+        elif descriptors1.shape[0]<2 or descriptors2.shape[0]<2:
+            return image_org
+        else:
+            matches = flann.knnMatch(descriptors1, descriptors2, k=2)
+
+            # 选择好的匹配
+            good_matches = []
+            for m, n in matches:
+                if m.distance < 0.7 * n.distance:
+                    good_matches.append(m)
+
+            # 提取关键点的坐标
+            src_pts = np.float32([keypoints1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+            dst_pts = np.float32([keypoints2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+
+            if len(src_pts) > 4 and len(dst_pts) > 4:
+                # 使用RANSAC算法进行变换估计
+                M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+                if M is None:
+                    return image_org
+                else:
+                    # 使用得到的变换矩阵进行透视变换
+                    image_org_aligned = cv2.warpPerspective(image_org, M, (image_goal.shape[1], image_goal.shape[0]))
+                    return image_org_aligned
+            else:
+                return image_org
 
 
 if __name__ == '__main__':
-    p = Processor(mode='order', clip_size=700)
-    for key in ['acros']:
-        p.run(input_path=f'/Users/maoyufeng/slash/dataset/org_dataset/{key}',
-              output_path=f'/Users/maoyufeng/slash/dataset/train_dataset/{key}',
-              min_byte=50.0,concat=True,clip=True,align=False,sharpen=False)
+    p = Processor(mode='order', clip_size=800,align_size=0)
+    p.run(input_path=f'/Users/maoyufeng/Downloads/Set2_ground_truth_images',
+          output_path=f'/Users/maoyufeng/slash/dataset/train_dataset/awb',
+          min_byte=0.0, concat=False, clip=True, align=False, sharpen=False)
 
-    # for key in ['acros']:
-    #     path= '/Users/maoyufeng/slash/dataset/org_dataset/{}'.format(key)
-    #     for file in os.listdir(path):
-    #         if file.endswith('jpg'):
-    #             os.rename(os.path.join(path,file),
-    #                       os.path.join(path,file.replace("_org","")))
+    # '1704176476307436'

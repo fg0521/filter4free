@@ -2,15 +2,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from PIL import Image
-from torchvision import transforms
-from torch.autograd import Variable
-from math import exp
-
-from dataset import transform
+import cv2
 
 
 class ChiSquareLoss(nn.Module):
+    """
+    卡方分布损失
+    """
     def __init__(self):
         super().__init__()
         self.bias = 1e-10
@@ -24,6 +22,7 @@ class ChiSquareLoss(nn.Module):
         hist1 = hist1 * 255
         hist2 = hist2 * 255
         for i in range(batch_size):
+
             r1 = torch.histc(hist1[i, 0, :, :], bins=self.bins, min=0, max=256)
             g1 = torch.histc(hist1[i, 1, :, :], bins=self.bins, min=0, max=256)
             b1 = torch.histc(hist1[i, 2, :, :], bins=self.bins, min=0, max=256)
@@ -47,6 +46,9 @@ class ChiSquareLoss(nn.Module):
 
 
 class HistogramLoss(nn.Module):
+    """
+    直方图损失
+    """
     def __init__(self, num_bins=256, margin=1):
         super(HistogramLoss, self).__init__()
         self.num_bins = num_bins
@@ -56,13 +58,18 @@ class HistogramLoss(nn.Module):
         hist_x = self.compute_histogram(x)
         hist_y = self.compute_histogram(y)
         loss = self.histogram_loss(hist_x, hist_y)
-
+        loss.requires_grad = True
         return loss
 
     def compute_histogram(self, img):
         hist = []
         for i in range(img.shape[0]):  # Iterate over channels
-            hist_channel = torch.histc(img[i, :, :, :] * 255, bins=self.num_bins, min=0, max=255)
+            try:
+                hist_channel = torch.histc(img[i, :, :, :] * 255, bins=self.num_bins, min=0, max=255)
+            except NotImplementedError:
+                # not support for mps now, need to move tensor to cpu
+                hist_channel = torch.histc(img.cpu()[i, :, :, :] * 255, bins=self.num_bins, min=0, max=255).to(
+                    img.device)
             hist_channel = hist_channel / torch.sum(hist_channel)  # Normalize histogram
             hist.append(hist_channel)
         hist = torch.stack(hist, dim=1)
@@ -75,6 +82,9 @@ class HistogramLoss(nn.Module):
 
 
 class EMDLoss(nn.Module):
+    """
+    EMD损失
+    """
     def __init__(self):
         super(EMDLoss, self).__init__()
         self.num_bins = 256
@@ -116,98 +126,76 @@ class EMDLoss(nn.Module):
         return total_loss
 
 
+class RGBLoss(nn.Module):
+    """
+    RGB Loss
+    计算图片R、G、B三个通道两两之间的差异
+    """
+    def __init__(self):
+        super(RGBLoss, self).__init__()
+        self.eps = 1e-4
 
-# 5.SSIM loss
-# 生成一位高斯权重，并将其归一化
-def gaussian(window_size,sigma):
-    gauss = torch.Tensor([exp(-(x - window_size // 2) ** 2 / float(2 * sigma ** 2)) for x in range(window_size)])
-    return gauss/torch.sum(gauss)  # 归一化
-
-
-# x=gaussian(3,1.5)
-# # print(x)
-# x=x.unsqueeze(1)
-# print(x.shape) #torch.Size([3,1])
-# print(x.t().unsqueeze(0).unsqueeze(0).shape) # torch.Size([1,1,1, 3])
-
-# 生成滑动窗口权重，创建高斯核：通过一维高斯向量进行矩阵乘法得到
-def create_window(window_size,channel=1):
-    _1D_window = gaussian(window_size, 1.5).unsqueeze(1)  # window_size,1
-    # mm:矩阵乘法 t:转置矩阵 ->1,1,window_size,_window_size
-    _2D_window = _1D_window.mm(_1D_window.t()).float().unsqueeze(0).unsqueeze(0)
-    # expand:扩大张量的尺寸，比如3,1->3,4则意味将输入张量的列复制四份，
-    # 1,1,window_size,_window_size->channel,1,window_size,_window_size
-    window = Variable(_2D_window.expand(channel, 1, window_size, window_size).contiguous())
-    return window
-
-
-def _ssim(img1, img2, window, window_size, channel, size_average=True):
-    mu1 = F.conv2d(img1, window, padding=window_size // 2, groups=channel)
-    mu2 = F.conv2d(img2, window, padding=window_size // 2, groups=channel)
-
-    mu1_sq = mu1.pow(2)
-    mu2_sq = mu2.pow(2)
-    mu1_mu2 = mu1 * mu2
-
-    sigma1_sq = F.conv2d(img1 * img1, window, padding=window_size // 2, groups=channel) - mu1_sq
-    sigma2_sq = F.conv2d(img2 * img2, window, padding=window_size // 2, groups=channel) - mu2_sq
-    sigma12 = F.conv2d(img1 * img2, window, padding=window_size // 2, groups=channel) - mu1_mu2
-
-    C1 = 0.01 ** 2
-    C2 = 0.03 ** 2
-
-    ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
-
-    if size_average:
-        return ssim_map.mean()
-    else:
-        return ssim_map.mean(1).mean(1).mean(1)
+    def forward(self,x1,x2):
+        #b,c,h,w = x.shape
+        batch = x1.shape[0]
+        loss = 0
+        k_list =[]
+        for x in [x1,x2]:
+            mean_rgb = torch.mean(x,[2,3],keepdim=True)
+            mr,mg, mb = torch.split(mean_rgb, 1, dim=1)
+            Drg = torch.pow(mr-mg,2)
+            Drb = torch.pow(mr-mb,2)
+            Dgb = torch.pow(mb-mg,2)
+            k = torch.pow(torch.pow(Drg,2) + torch.pow(Drb,2) + torch.pow(Dgb,2) + self.eps,0.5)
+            k = k.reshape(batch)
+            k_list.append(k)
+        for i in range(0, batch):
+            loss += torch.sum(torch.abs(k_list[0][i]-k_list[1][i]))
+        loss /= batch
+        return loss
 
 
-# 构造损失函数用于网络训练或者普通计算SSIM值
-class SSIM(torch.nn.Module):
-    def __init__(self, window_size=11, size_average=True):
-        super(SSIM, self).__init__()
-        self.window_size = window_size
-        self.size_average = size_average
-        self.channel = 1
-        self.window = create_window(window_size, self.channel)
-
-    def forward(self, img1, img2):
-        (_, channel, _, _) = img1.size()
-
-        if channel == self.channel and self.window.data.type() == img1.data.type():
-            window = self.window
-        else:
-            window = create_window(self.window_size, channel)
-
-            if img1.is_cuda:
-                window = window.cuda(img1.get_device())
-            window = window.type_as(img1)
-
-            self.window = window
-            self.channel = channel
-
-        return _ssim(img1, img2, window, self.window_size, channel, self.size_average)
-
-
-# 普通计算SSIM
-def ssim(img1, img2, window_size=11, size_average=True):
-    (_, channel, _, _) = img1.size()
-    window = create_window(window_size, channel)
-
-    if img1.is_cuda:
-        window = window.cuda(img1.get_device())
-    window = window.type_as(img1)
-
-    return _ssim(img1, img2, window, window_size, channel, size_average)
 
 
 
 
 if __name__ == '__main__':
-    img = transform(Image.open('/Users/maoyufeng/Downloads/iShot_2023-12-05_11.40.09.jpg'))
-    hist_channel = torch.histc(img[:, :, :] * 255, bins=256, min=0, max=255)
-    print(hist_channel)
-    hist, bin_edges = np.histogram(img[:, :, :] * 255, bins=256, range=(0,255))
-    print(torch.from_numpy(hist).float())
+    # img = transform(Image.open('/Users/maoyufeng/Downloads/iShot_2023-12-05_11.40.09.jpg'))
+    # hist_channel = torch.histc(img[:, :, :] * 255, bins=256, min=0, max=255)
+    # print(hist_channel)
+    # hist, bin_edges = np.histogram(img[:, :, :] * 255, bins=256, range=(0,255))
+    # print(torch.from_numpy(hist).float())
+    # im1 = cv2.imread('/Users/maoyufeng/Library/Mobile Documents/com~apple~CloudDocs/实验/img/1_real.jpg')
+    # im2 = cv2.imread('/Users/maoyufeng/Library/Mobile Documents/com~apple~CloudDocs/实验/img/1_rgb.jpg')
+    # im1 = torch.from_numpy(im1).permute(2, 0, 1).unsqueeze(0).to(torch.float32)/ 255.0
+    # im2 = torch.from_numpy(im2).permute(2, 0, 1).unsqueeze(0).to(torch.float32)/ 255.0
+    # # im1 = torch.rand((4,3,224,224))
+    # # im2 = torch.rand((4,3,224,224))
+    # loss = RGBLoss2()
+    # print(loss(torch.cat([im1,im1,im1,im1]),torch.cat([im2,im2,im2,im2])))
+
+    image1 = cv2.imread('/Users/maoyufeng/Downloads/filter-test/velvia/DSCF3575.jpg')  # 加载图像1
+    image2 = cv2.imread('/Users/maoyufeng/Downloads/232133.jpg')  # 加载图像2
+    image3 = cv2.imread('/Users/maoyufeng/Downloads/23213345.jpg')  # 加载图像2
+    image1 = cv2.resize(image1,(image2.shape[1],image2.shape[0]))
+
+
+
+    # 将图像转换为PyTorch张量，并确保它们的形状是相同的
+    image1_tensor = torch.tensor(image1, dtype=torch.float32)
+    image2_tensor = torch.tensor(image2, dtype=torch.float32)
+    image3_tensor = torch.tensor(image3, dtype=torch.float32)
+    # 获取图像的高度和宽度
+    # height, width,_ = image1_tensor.shape
+    # 计算每个像素上的L1 loss
+
+
+    # losses = torch.sum(torch.abs(image1_tensor - image2_tensor))
+    # print(losses)
+    # losses = torch.sum(torch.abs(image1_tensor - image3_tensor))
+    # print(losses)
+    loss = F.l1_loss(image1_tensor, image2_tensor)
+    print(f'Filter Small: {loss}')
+    loss = F.l1_loss(image1_tensor, image3_tensor)
+    print(f'Filter  Base: {loss}')
+
