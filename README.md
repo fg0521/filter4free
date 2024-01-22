@@ -97,15 +97,24 @@
 
 参考`对比实验.pdf`
 
-#### 用户问题记录★★★★★
+#### 用户提问★★★★★
 
 - MacOS M系列出现`已损坏，无法打开`提示
-  1. 打开电脑`终端`，输入`sudo spctl --master-disable`和`密码`，回到`【系统偏好设置】`▸`【安全性与隐私】`▸``【安全性】/【通用】`，选中`任何来源`选项。
-  2. 打开 “终端的完全磁盘访问” 权限。`【系统设置】` ▸ `【隐私与安全性】` ▸ `【完整磁盘访问权限】` 勾选了`【终端】` (如果之前勾选过-然后+）
+  1. 打开电脑`终端`，输入`sudo spctl --master-disable`和`密码`，回到`【系统偏好设置】`▸`【安全性与隐私】`▸`【安全性】/【通用`，选中`任何来源`选项。
+  2. 打开 “终端的完全磁盘访问” 权限。`【系统设置】` ▸ `【隐私与安全性】` ▸ `【完整磁盘访问权限】` 勾选了`【终端】` （如果之前勾选过-然后+）
   3. 打开`【系统设置】`▸`【隐私与安全性】`▸`【安全性】`板块下，不明身份的开发者 点下方的`【仍要打开】`
+  4. 先把app放到`【应用程序】`再在`【终端】`执行`sudo xattr -rd com.apple.quarantine 你的app路径`，例如：`sudo xattr -rd com.apple.quarantine /Applications/FilterSimulation.app`
 
--  程序闪退
+-  MacOS M系列出现`闪退`
+  
   1. 可以在terminal中使用`open AIFilter.app` 命令打开或`右键显示包内容`▸`Contents`▸`MacOS`▸`AIFilter`▸`右键在终端中打开`
+  2. 安装`command-line-tools`：在`【终端】`中运行`xcode-select --install`命令进行安装，安装完成后输入`sudo codesign --force --deep --sign - 你的app路径` ，例如：`sudo codesign --force --deep --sign -  /Applications/FilterSimulation.app`
+  
+-  其他相机/手机使用后是否存在偏差
+  
+-  
+  
+  
 
 #### TODO
 
