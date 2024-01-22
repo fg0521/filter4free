@@ -3,6 +3,7 @@ import torch.nn.functional as F
 import torch
 import torch.nn as nn
 
+
 # class FilmMask(nn.Module):
 #     """
 #     去色罩
@@ -78,13 +79,13 @@ class FilterSimulation(nn.Module):
     """
     滤镜模拟
     AdamW: lr=0.002
-    loss: MSELoss+EMDLoss
-    训练数据: 64张图片
+    loss: L1Loss+RGBLoss
+    训练数据: 150张图片
     训练通道: RGB
-    epoch: 100
+    epoch: 150
     """
 
-    def __init__(self, training=False,channel=3):
+    def __init__(self, training=False, channel=3):
         super(FilterSimulation, self).__init__()
         self.encoder = nn.Sequential(
             nn.Conv2d(channel, 32, kernel_size=3, padding=1),
@@ -111,17 +112,20 @@ class FilterSimulation(nn.Module):
                     if n._get_name() in ['Conv2d', 'ConvTranspose2d']:
                         nn.init.kaiming_uniform_(n.weight, mode='fan_in', nonlinearity='relu')
 
-    def forward(self, x):
+    def forward(self, x, temp=1.0):
         # 编码器
         x1 = self.encoder(x)
         # 解码器
         x2 = self.decoder(x1)
-        return x2
-
+        # 引入温度系数 来控制图像变化
+        temp = max(min(temp, 1.0), 0.0)
+        x3 = (1 - temp) * x + temp * x2
+        return x3
 
 
 class DoubleConvBlock(nn.Module):
     """double conv layers block"""
+
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.double_conv = nn.Sequential(
@@ -137,6 +141,7 @@ class DoubleConvBlock(nn.Module):
 
 class DownBlock(nn.Module):
     """Downscale block: maxpool -> double conv block"""
+
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.maxpool_conv = nn.Sequential(
@@ -150,6 +155,7 @@ class DownBlock(nn.Module):
 
 class BridgeDown(nn.Module):
     """Downscale bottleneck block: maxpool -> conv"""
+
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.maxpool_conv = nn.Sequential(
@@ -164,6 +170,7 @@ class BridgeDown(nn.Module):
 
 class BridgeUP(nn.Module):
     """Downscale bottleneck block: conv -> transpose conv"""
+
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.conv_up = nn.Sequential(
@@ -178,12 +185,11 @@ class BridgeUP(nn.Module):
 
 class UpBlock(nn.Module):
     """Upscale block: double conv block -> transpose conv"""
+
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.conv = DoubleConvBlock(in_channels * 2, in_channels)
         self.up = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2)
-
-
 
     def forward(self, x1, x2):
         x = torch.cat([x2, x1], dim=1)
@@ -193,6 +199,7 @@ class UpBlock(nn.Module):
 
 class OutputBlock(nn.Module):
     """Output block: double conv block -> output conv"""
+
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.out_conv = nn.Sequential(
@@ -216,7 +223,6 @@ class FilterSimulationLarge(nn.Module):
         self.awb_decoder_up2 = UpBlock(32, 16)
         self.awb_decoder_out = OutputBlock(16, 3)
 
-
     def forward(self, x):
         x1 = self.encoder_inc(x)
         x2 = self.encoder_down1(x1)
@@ -239,7 +245,6 @@ class FilterNet(nn.Module):
         self.awb_decoder_up1 = UpBlock(64, 32)
         self.awb_decoder_out = OutputBlock(32, 3)
 
-
     def forward(self, x):
         x1 = self.encoder_inc(x)
         x2 = self.encoder_down1(x1)
@@ -250,11 +255,18 @@ class FilterNet(nn.Module):
         return out
 
 
-
-
-
 if __name__ == '__main__':
-    input = torch.rand((1,3,448,448))
+    input = torch.rand((1, 3, 448, 448))
     model = FilterSimulation()
-    print(model(input).shape)
+    out = model.forward(input, temp=0.6)
+    print((out == input).all())
 
+    # org_tensor = torch.rand((1,3,3,3))
+    # res_tensor = torch.rand((1,3,3,3))
+    #
+    # print(org_tensor)
+    # print(res_tensor)
+    #
+    # for temp in [0.0,0.5,1.0]:
+    #     res = (1-temp)*org_tensor+temp*res_tensor
+    #     print(res)

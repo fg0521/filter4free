@@ -15,7 +15,7 @@ from loss import RGBLoss
 from models import FilterSimulation, FilterNet
 import numpy as np
 import matplotlib.pyplot as plt
-from utils import image2block
+from infer import image2block
 
 seed = 3407
 torch.manual_seed(seed)
@@ -53,9 +53,9 @@ class Trainer:
             self.model.load_state_dict(torch.load(pretrained_model_path, map_location=self.device),strict=False)
         if self.test_image is not None:
             self.test_path = os.path.dirname(test_image)
-        # assert os.path.exists(data_path), 'Can Not Find Dataset For Training!'
-        # if not os.path.exists(save_model_path):
-        #     os.mkdir(save_model_path)
+        assert os.path.exists(data_path), 'Can Not Find Dataset For Training!'
+        if not os.path.exists(save_model_path):
+            os.mkdir(save_model_path)
         self.save_model_path = save_model_path
 
 

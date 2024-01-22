@@ -1,13 +1,14 @@
+import os
 import random
 import time
-
+import torch.nn.functional as F
 import cv2
 import numpy as np
 import torch
 from PIL import Image
 # from torchvision import transforms
 from tqdm import tqdm
-from models import FilterSimulation
+from models import FilterSimulation,FilterNet
 seed = 2333
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)  # gpu
@@ -53,7 +54,8 @@ def infer(image, model, device, patch_size=448, padding=16, batch=8):
     args: 各种参数
     """
     img = cv2.imread(image)
-    channel = model.state_dict()['decoder.4.bias'].shape[0] # 获取加载的模型的通道
+    # channel = model.state_dict()['decoder.4.bias'].shape[0] # 获取加载的模型的通道
+    channel = 3 # 获取加载的模型的通道
     if channel ==1:
         # 黑白滤镜
         if img.shape[2]==3:
@@ -68,7 +70,7 @@ def infer(image, model, device, patch_size=448, padding=16, batch=8):
         for i in tqdm(range(0, len(split_images), batch)):
             input = torch.vstack(split_images[i:i + batch])
             input = input.to(device)
-            output = model(input)
+            output = model.forward(input)
             for k in range(output.shape[0]):
                 # RGB Channel
                 out = torch.clamp(output[k, :, :, :] * 255, min=0, max=255).byte().permute(1, 2,0).detach().cpu().numpy()
@@ -88,12 +90,44 @@ if __name__ == '__main__':
         device = torch.device('mps')
     else:
         device = torch.device('cpu')
-    pth = torch.load('static/checkpoints/fuji/superia400/best.pth', map_location=device)
-    model = FilterSimulation()
-    model.load_state_dict(pth)
-    model.to(device)
-    model.eval()
-    st = time.time()
-    target = infer(image='/Users/maoyufeng/Downloads/WechatIMG27.jpg', model=model,device=device)
-    print(time.time() - st)
-    cv2.imwrite('/Users/maoyufeng/Downloads/23213332.jpg',target,[cv2.IMWRITE_JPEG_QUALITY, 100])
+    pth1 = torch.load('static/checkpoints/fuji/velvia/best.pth', map_location=device)
+    pth2 = torch.load('static/checkpoints/fuji/velvia/best(unet).pth', map_location=device)
+    model1 = FilterSimulation()
+    model1.load_state_dict(pth1)
+    model1.to(device)
+    model1.eval()
+    model2 = FilterNet()
+    model2.load_state_dict(pth2)
+    model2.to(device)
+    model2.eval()
+    # st = time.time()
+    # target = infer(image='/Users/maoyufeng/Downloads/test1.jpg', model=model, device=device)
+    # print(time.time() - st)
+    # cv2.imwrite('/Users/maoyufeng/Downloads/232133326.jpg', target, [cv2.IMWRITE_JPEG_QUALITY, 100])
+
+    loss1,loss2 = [],[]
+    time1,time2 = [],[]
+    path = '/Users/maoyufeng/slash/dataset/train_dataset/velvia/val'
+    for img in os.listdir(path):
+        if img.endswith('_org.jpg'):
+            org = cv2.imread(os.path.join(path,img.replace("_org","")))
+            image = os.path.join(path,img)
+            stime = time.time()
+            target1 = infer(image=image, model=model1,device=device)
+            etime = time.time()
+            target2 = infer(image=image, model=model2,device=device)
+            cv2.imwrite(os.path.join(path,img.replace('_org','_mymodel')),target1)
+            cv2.imwrite(os.path.join(path,img.replace('_org','_unet')),target2)
+            time2.append(time.time()-etime)
+            time1.append(etime-stime)
+            image0_tensor = torch.tensor(org, dtype=torch.float32)
+            image1_tensor = torch.tensor(target1, dtype=torch.float32)
+            image2_tensor = torch.tensor(target2, dtype=torch.float32)
+            loss1.append(float(F.l1_loss(image0_tensor,image1_tensor).numpy()))
+            loss2.append(float(F.l1_loss(image0_tensor,image2_tensor).numpy()))
+            # if len(time1)>5:
+            #     break
+    print(sum(loss1)/len(loss1))
+    print(sum(loss2)/len(loss2))
+    print(sum(time1)/len(time1))
+    print(sum(time2)/len(time2))

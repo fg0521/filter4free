@@ -6,8 +6,10 @@ import shutil
 import time
 import cv2
 import numpy as np
+import torch
 from tqdm import tqdm
-
+from image_align.superpoint import SuperPoint
+from image_align.matching import add_align
 
 def laplacian(img, size=1):
     kernel = np.array([[-1, -1, -1], [-1, size + 8, -1], [-1, -1, -1]])
@@ -17,14 +19,34 @@ def laplacian(img, size=1):
     return res.astype(np.uint8)
 
 
+
+
+
+
+
+
 class Processor():
 
-    def __init__(self, mode='order', clip_size=512,align_size=30):
+    def __init__(self, mode='order', clip_size=512,align_size=0):
         self.mode = mode  # random：随机裁剪  order：顺序裁剪
         self.clip_size = clip_size+2*align_size
         self.align_size = align_size
         self.clip_num = 30
         self.max_clip_size = 1200
+        if torch.cuda.is_available():
+            self.device = torch.device('cuda:0')
+        elif torch.backends.mps.is_built():
+            self.device = torch.device('mps')
+        else:
+            self.device = torch.device('cpu')
+
+        if align_size >0:
+            self.super_point = SuperPoint()
+            self.super_point.load_state_dict(torch.load('image_align/checkpoints/superpoint_pytorch.pth', map_location=self.device))
+            self.super_point.eval()
+            self.super_point = self.super_point.to(self.device)
+
+
 
     def add_rotate(self, image: list):
         """
@@ -137,9 +159,12 @@ class Processor():
 
                 for mode in ['train', 'val']:
                     for org_im, goal_im in eval(mode):
-                        if align:
+                        if align and self.align_size>0:
                             org_im_cp = org_im[self.align_size:org_im.shape[0] - self.align_size, self.align_size:org_im.shape[1] - self.align_size, :]
-                            org_im = self.add_align(org_img=org_im, goal_img=goal_im)
+                            # 替换更好的图像对齐算法
+                            # org_im = self.add_align(org_img=org_im, goal_img=goal_im)
+                            org_im = add_align(model=self.super_point,device=self.device,org_img=org_im, goal_img=goal_im)
+
                             org_im = org_im[self.align_size:org_im.shape[0] - self.align_size, self.align_size:org_im.shape[1] - self.align_size, :]
                             goal_im = goal_im[self.align_size:goal_im.shape[0] - self.align_size, self.align_size:goal_im.shape[1] - self.align_size, :]
                             diff = abs(np.sum(org_im_cp/255.0-org_im/255.0))
@@ -155,9 +180,9 @@ class Processor():
                         name = str(time.time()).replace('.', '')
                         cv2.imwrite(os.path.join(output_path, mode, name + '_org.jpg'), org_im)
                         cv2.imwrite(os.path.join(output_path, mode, name + '.jpg'), goal_im)
-                        # if os.path.getsize(os.path.join(output_path, mode, name + '_org.jpg')) / 1024 < min_byte:
-                        #     os.remove(os.path.join(output_path, mode, name + '_org.jpg'))
-                        #     os.remove(os.path.join(output_path, mode, name + '.jpg'))
+                        if os.path.getsize(os.path.join(output_path, mode, name + '_org.jpg')) / 1024 < min_byte:
+                            os.remove(os.path.join(output_path, mode, name + '_org.jpg'))
+                            os.remove(os.path.join(output_path, mode, name + '.jpg'))
         if concat:
             for i in tqdm(range(500), desc='数据拼接'):
                 img_num = set()
@@ -236,9 +261,7 @@ class Processor():
 
 
 if __name__ == '__main__':
-    p = Processor(mode='order', clip_size=800,align_size=0)
-    p.run(input_path=f'/Users/maoyufeng/Downloads/Set2_ground_truth_images',
-          output_path=f'/Users/maoyufeng/slash/dataset/train_dataset/awb',
-          min_byte=0.0, concat=False, clip=True, align=False, sharpen=False)
-
-    # '1704176476307436'
+    p = Processor(mode='order', clip_size=1000,align_size=0)
+    p.run(input_path=f'/Users/maoyufeng/slash/dataset/org_dataset/velvia',
+          output_path=f'/Users/maoyufeng/slash/dataset/train_dataset/velvia2',
+          min_byte=200.0, concat=False, clip=True, align=False, sharpen=False)
