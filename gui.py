@@ -2,12 +2,12 @@ import os
 import sys
 import time
 import cv2
+import numpy as np
 import torch
-from PIL import Image
 from PyQt5.QtWidgets import QMainWindow, QButtonGroup, \
     QScrollArea, QPushButton, QLabel, QMessageBox, QApplication, QWidget, QHBoxLayout, QVBoxLayout, QSlider
 from PyQt5.QtCore import pyqtSignal, QObject, QThread, pyqtProperty, QSize, Qt, QRectF, QEvent
-from utils import image2block
+from infer import image2block
 from models import FilterSimulation
 from PyQt5.QtGui import QColor, QPainter, QFont, QPixmap
 import json
@@ -267,20 +267,19 @@ class PredictionWorker(QObject):
 
     def predict(self, model, device, image_list, filter_name, quality=100, padding=16, patch_size=640, batch=8):
         model = model.to(device)
-        if list(model.state_dict().keys())[-1] == 'decoder.4.bias':
-            channels = model.state_dict()['decoder.4.bias'].shape[0]
-        else:
-            channels = 3
+        channel = model.state_dict()['decoder.4.bias'].shape[0]
         start = 0
         for n, image in enumerate(image_list):
-            img = Image.open(image)
+            img = cv2.imread(image)
             # 对每个小块进行推理
-            image_size = img.size
-            if channels == 1:
-                target = Image.new('L', image_size)
-                img = img.convert('L')
+            if channel == 1:
+                # 黑白滤镜
+                if img.shape[2] == 3:
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             else:
-                target = Image.new('RGB', image_size)
+                # 彩色滤镜
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            target = np.zeros(shape=(img.shape), dtype=np.uint8)
             split_images, size_list = image2block(img, patch_size=patch_size, padding=padding)
             # 第n张图片的耗时时间 均分
             end = 100 / len(image_list) * (n + 1)
@@ -295,11 +294,8 @@ class PredictionWorker(QObject):
                                                                                                    0).detach().cpu().numpy()
                         x, y, w, h = size_list[i + k]
                         out = cv2.resize(out, (w, h))
-                        if len(out.shape) == 3:
-                            out = out[padding:h - padding, padding:w - padding, :]
-                        else:
-                            out = out[padding:h - padding, padding:w - padding]
-                        target.paste(Image.fromarray(out), (x, y))
+                        out = out[padding:h - padding, padding:w - padding]
+                        target[y:y + out.shape[0], x:x + out.shape[1], :] = out
                     if end == 100:
                         each_end = 101
                     else:
@@ -313,7 +309,8 @@ class PredictionWorker(QObject):
                     each_start = each_end
             start = int(end)
             file_name, file_type = os.path.splitext(image)
-            target.save(file_name + f"_{filter_name}" + file_type, quality=quality)
+            target = cv2.cvtColor(target,cv2.COLOR_RGB2BGR)
+            cv2.imwrite(file_name + f"_{filter_name}" + file_type,target,[cv2.IMWRITE_JPEG_QUALITY, quality])
 
 
 class PredictionThread(QThread):
@@ -351,20 +348,20 @@ class MyMainWindow(QMainWindow):
         self.checkpoints_dict = {
             'FilmMask': os.path.join(file_path, 'static', 'checkpoints', 'film-mask', 'best.pth'),  # 去色罩
             # Fuji Filters
-            'FJ-A': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'acros', 'best.pth'),  # ACROS
-            'FJ-CC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-chrome', 'best.pth'),
+            'FJ-A': '',  # ACROS
+            'FJ-CC': '',
             # CLASSIC CHROME
-            'FJ-E': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'eterna', 'best.pth'),  # ETERNA
-            'FJ-EB': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'eterna-bleach-bypass', 'best.pth'),
+            'FJ-E': '',  # ETERNA
+            'FJ-EB': '',
             # ETERNA BLEACH BYPASS
-            'FJ-NC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-neg', 'best.pth'),
+            'FJ-NC': '',
             # CLASSIC Neg.
-            'FJ-NH': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'pro-neg-hi', 'best.pth'),  # PRO Neg.Hi
+            'FJ-NH':'',  # PRO Neg.Hi
             'FJ-NN': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'nostalgic-neg', 'best.pth'),
             # NOSTALGIC Neg.
-            'FJ-NS': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'pro-neg-std', 'best.pth'),  # PRO Neg.Std
-            'FJ-S': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'astia', 'best.pth'),  # ASTIA
-            'FJ-STD': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'provia', 'best.pth'),  # PROVIA
+            'FJ-NS': '',  # PRO Neg.Std
+            'FJ-S': '',  # ASTIA
+            'FJ-STD': '',  # PROVIA
             'FJ-V': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'velvia', 'best.pth'),  # VELVIA
             'FJ-Pro400H': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'pro400h', 'best.pth'),  # VELVIA
             'FJ-Superia400': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'superia400', 'best.pth'),
@@ -624,7 +621,7 @@ class MyMainWindow(QMainWindow):
                     l = []
                     for img in os.listdir(self.predict_image):
                         try:
-                            Image.open(os.path.join(self.predict_image, img))
+                            # Image.open(os.path.join(self.predict_image, img))
                             l.append(os.path.join(self.predict_image, img))
                         except:
                             continue
@@ -632,7 +629,7 @@ class MyMainWindow(QMainWindow):
                     self.display4image(os.path.join(file_path, 'static', 'src', 'file_temp1.png'))
                 else:
                     try:
-                        Image.open(self.predict_image)
+                        # Image.open(self.predict_image)
                         self.display4image(self.predict_image)
                         self.predict_image = [self.predict_image]
                     except:

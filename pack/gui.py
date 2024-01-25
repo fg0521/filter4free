@@ -309,6 +309,7 @@ class PredictionWorker(QObject):
                     each_start = each_end
             start = int(end)
             file_name, file_type = os.path.splitext(image)
+            target = cv2.cvtColor(target,cv2.COLOR_RGB2BGR)
             cv2.imwrite(file_name + f"_{filter_name}" + file_type,target,[cv2.IMWRITE_JPEG_QUALITY, quality])
 
 class PredictionThread(QThread):
@@ -346,20 +347,20 @@ class MyMainWindow(QMainWindow):
         self.checkpoints_dict = {
             'FilmMask': os.path.join(file_path, 'static', 'checkpoints', 'film-mask', 'best.pth'),  # 去色罩
             # Fuji Filters
-            'FJ-A': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'acros', 'best.pth'),  # ACROS
-            'FJ-CC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-chrome', 'best.pth'),
+            'FJ-A': '',  # ACROS
+            'FJ-CC': '',
             # CLASSIC CHROME
-            'FJ-E': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'eterna', 'best.pth'),  # ETERNA
-            'FJ-EB': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'eterna-bleach-bypass', 'best.pth'),
+            'FJ-E': '',  # ETERNA
+            'FJ-EB': '',
             # ETERNA BLEACH BYPASS
-            'FJ-NC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-neg', 'best.pth'),
+            'FJ-NC': '',
             # CLASSIC Neg.
-            'FJ-NH': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'pro-neg-hi', 'best.pth'),  # PRO Neg.Hi
+            'FJ-NH':'',  # PRO Neg.Hi
             'FJ-NN': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'nostalgic-neg', 'best.pth'),
             # NOSTALGIC Neg.
-            'FJ-NS': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'pro-neg-std', 'best.pth'),  # PRO Neg.Std
-            'FJ-S': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'astia', 'best.pth'),  # ASTIA
-            'FJ-STD': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'provia', 'best.pth'),  # PROVIA
+            'FJ-NS': '',  # PRO Neg.Std
+            'FJ-S': '',  # ASTIA
+            'FJ-STD': '',  # PROVIA
             'FJ-V': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'velvia', 'best.pth'),  # VELVIA
             'FJ-Pro400H': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'pro400h', 'best.pth'),  # VELVIA
             'FJ-Superia400': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'superia400', 'best.pth'),
