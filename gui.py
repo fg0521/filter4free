@@ -1,3 +1,4 @@
+import copy
 import os
 import sys
 import time
@@ -9,7 +10,7 @@ from PyQt5.QtWidgets import QMainWindow, QButtonGroup, \
 from PyQt5.QtCore import pyqtSignal, QObject, QThread, pyqtProperty, QSize, Qt, QRectF, QEvent
 from infer import image2block
 from models import FilterSimulation
-from PyQt5.QtGui import QColor, QPainter, QFont, QPixmap
+from PyQt5.QtGui import QColor, QPainter, QFont, QPixmap, QImage
 import json
 
 file_path = os.path.dirname(__file__)
@@ -265,12 +266,13 @@ class PercentProgressBar(QWidget):
 class PredictionWorker(QObject):
     update_progress = pyqtSignal(int)
 
-    def predict(self, model, device, image_list, filter_name, quality=100, padding=16, patch_size=640, batch=8):
+    def predict(self, model, device, image_list, filter_name, temperature=1.0,quality=100, padding=16, patch_size=640, batch=8):
         model = model.to(device)
         channel = model.state_dict()['decoder.4.bias'].shape[0]
         start = 0
+        # targets = []
         for n, image in enumerate(image_list):
-            img = cv2.imread(image)
+            img = cv2.imread(image) if isinstance(image,str) else image
             # 对每个小块进行推理
             if channel == 1:
                 # 黑白滤镜
@@ -309,12 +311,17 @@ class PredictionWorker(QObject):
                     each_start = each_end
             start = int(end)
             file_name, file_type = os.path.splitext(image)
-            target = cv2.cvtColor(target,cv2.COLOR_RGB2BGR)
-            cv2.imwrite(file_name + f"_{filter_name}" + file_type,target,[cv2.IMWRITE_JPEG_QUALITY, quality])
+            target = torch.tensor((1.0 - temperature) * (img / 255.0) + temperature * (target / 255.0))
+            target = torch.clamp(target * 255, min=0, max=255).numpy().astype(np.uint8)
+            target = cv2.cvtColor(target, cv2.COLOR_RGB2BGR)
+
+            cv2.imwrite(file_name + f"_{filter_name}" + file_type, target, [cv2.IMWRITE_JPEG_QUALITY, quality])
+            # targets.append(target)
+        # return targets
 
 
 class PredictionThread(QThread):
-    def __init__(self, image_list, model, device, image_quality, filter_name):
+    def __init__(self, image_list, model, device, image_quality, filter_name,temperature):
         super().__init__()
         self.worker = PredictionWorker()
         self.image_list = image_list
@@ -322,12 +329,48 @@ class PredictionThread(QThread):
         self.device = device
         self.quality = image_quality
         self.filter_name = filter_name
+        self.temperature = temperature
 
     def run(self):
         self.worker.predict(model=self.model, device=self.device,
                             image_list=self.image_list,
                             quality=self.quality,
-                            filter_name=self.filter_name)
+                            filter_name=self.filter_name,
+                            temperature=self.temperature)
+
+def dynamic_infer(image, model, device, patch_size=448, padding=16, batch=8):
+    """
+    通过滑块来实现动态调整色彩
+    """
+    # img = cv2.imread(image)
+    # channel = model.state_dict()['decoder.4.bias'].shape[0] # 获取加载的模型的通道
+    model = model.to(device)
+    channel = 3  # 获取加载的模型的通道
+    if channel == 1:
+        # 黑白滤镜
+        if image.shape[2] == 3:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        # 彩色滤镜
+        image= cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    # 对每个小块进行推理
+    target = np.zeros(shape=(image.shape), dtype=np.uint8)
+    split_images, size_list = image2block(image, patch_size=patch_size, padding=padding)
+    with torch.no_grad():
+        for i in range(0, len(split_images), batch):
+            input = torch.vstack(split_images[i:i + batch])
+            input = input.to(device)
+            output = model.forward(input)
+            for k in range(output.shape[0]):
+                # RGB Channel
+                out = torch.clamp(output[k, :, :, :] * 255, min=0, max=255).byte().permute(1, 2, 0).detach().cpu().numpy()
+                x, y, w, h = size_list[i + k]
+                out = cv2.resize(out, (w, h))
+                out = out[padding:h - padding, padding:w - padding]
+                target[y:y + out.shape[0], x:x + out.shape[1]] = out
+
+    return image,target
+
 
 
 class MyMainWindow(QMainWindow):
@@ -335,8 +378,11 @@ class MyMainWindow(QMainWindow):
         super().__init__()
         self.predict_image = ''
         self.save_path = ''
+        self.showing_image = ''# 当前正在显示的图像
         self.default_filter = 'FJ-V'
-        self.quality_num = 100
+        self.quality_num = 100  # 默认图像质量
+        # self.temperature = 100  # 默认温度系数 100为正常滤镜
+        self.temp_pred_img = None
         self.model = FilterSimulation()
         if torch.cuda.is_available():
             self.device = torch.device('cuda:0')
@@ -344,19 +390,19 @@ class MyMainWindow(QMainWindow):
             self.device = torch.device('mps')
         else:
             self.device = torch.device('cpu')
-
+        self.background_img = cv2.cvtColor(cv2.imread(os.path.join(file_path,'static/src/background.jpg')),cv2.COLOR_BGR2RGB)
         self.checkpoints_dict = {
             'FilmMask': os.path.join(file_path, 'static', 'checkpoints', 'film-mask', 'best.pth'),  # 去色罩
             # Fuji Filters
             'FJ-A': '',  # ACROS
-            'FJ-CC': '',
+            'FJ-CC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-chrome', 'best.pth'),
             # CLASSIC CHROME
             'FJ-E': '',  # ETERNA
             'FJ-EB': '',
             # ETERNA BLEACH BYPASS
-            'FJ-NC': '',
+            'FJ-NC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-neg', 'best.pth'),
             # CLASSIC Neg.
-            'FJ-NH':'',  # PRO Neg.Hi
+            'FJ-NH': '',  # PRO Neg.Hi
             'FJ-NN': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'nostalgic-neg', 'best.pth'),
             # NOSTALGIC Neg.
             'FJ-NS': '',  # PRO Neg.Std
@@ -409,6 +455,37 @@ class MyMainWindow(QMainWindow):
             # # Nikon Filters
             # 'Nikon': os.path.join(file_path, 'static', 'checkpoints', 'nikon', 'best.pth'),  # 尼康
         }
+        self.description = {
+            'FilmMask': '去除彩色负片的色罩',
+            # from Fuji xs20
+            'FJ-A': '使用丰富细节和高锐度进行黑白拍摄',
+            'FJ-CC': '暗部色彩强烈，高光色彩柔和，加强阴影对比度，呈现平静的画面',
+            'FJ-E': '适用于影片外观视频的柔和颜色和丰富的阴影色调',
+            'FJ-EB': '低饱和度对比度的独特颜色，适用于静态图像和视频',
+            'FJ-NC': '硬色调增强的色彩来增加图像深度',
+            'FJ-NH': '适合对比度稍高的肖像',
+            'FJ-NN': '琥珀色高光和丰富的阴影色调，用于打印照片',
+            'FJ-NS': '中性色调，最适合编辑图像，适合具有柔光和渐变和肤色的人像',
+            'FJ-S': '色彩对比度柔和，人像摄影',
+            'FJ-STD': '适合各种拍摄对象',
+            'FJ-V': '再现明亮色彩，适合自然风光摄影',
+            'FJ-Pro400H': '适合各种摄影类型，特别是婚礼、时尚和生活方式摄影',
+            'FJ-Superia400': '鲜艳的色彩，自然肤色，柔和的渐变',
+            'FJ-C100': '较高的锐度，光滑和细腻颗粒',
+            # https://asset.fujifilm.com/master/emea/files/2020-10/98c3d5087c253f51c132a5d46059f131/films_c200_datasheet_01.pdf
+            'FJ-C200': '光滑、美丽、自然的肤色',
+            'FJ-C400': '充满活力、逼真的色彩和细腻的颗粒',
+            'FJ-Provia400X': '一流的精细粒度和清晰度，适合风景、自然、快照和人像摄影',
+            # from google
+            'KD-ColorPlus':'颗粒结构细、清晰度高、色彩饱和度丰富',
+            'KD-Gold200': '具有色彩饱和度、细颗粒和高清晰度的出色组合',
+            # from https://imaging.kodakalaris.com/sites/default/files/wysiwyg/KodakUltraMax400TechSheet-1.pdf
+            'KD-UltraMax400':'明亮，充满活力的色彩，准确的肤色再现自然的人物照片',
+            'KD-Portra400': '自然肤色、高细节和细颗粒，自然的暖色调',
+            'KD-Portra160NC': '微妙的色彩和平滑、自然的肤色',
+            'KD-E100': '极细的颗粒结构，充满活力的显色性，整体低对比度轮廓',
+            'KD-Ektar100': '超鲜艳的调色、高饱和度和极其精细的颗粒结构',
+        }
         self.gray_list = ['FJ-A']
         self.model.load_state_dict(
             state_dict=torch.load(self.checkpoints_dict[self.default_filter], map_location=self.device))
@@ -455,7 +532,8 @@ class MyMainWindow(QMainWindow):
             button = QPushButton()
             button.setFixedWidth(STYLE['filter_button']['width'])
             button.setFixedHeight(STYLE['filter_button']['height'])  # 设置按钮高度
-
+            if 'ORG' in filter_name:
+                button.setToolTip(f'{self.description[filter_name.replace("-ORG.png","")]}')
             if filter_name.replace('-ORG.png', '') == self.default_filter:
                 button.setStyleSheet(
                     "QPushButton { border-image: url("
@@ -492,29 +570,45 @@ class MyMainWindow(QMainWindow):
         predict_layout.addWidget(self.img_input, STYLE['image_input']['grid3'])
 
         # 按钮和进度条，设置水平布局
+        self.sliders = QWidget()
+        slider_layout = QVBoxLayout()
         self.quality_slider = QSlider(Qt.Horizontal, self)
+        self.temp_slider = QSlider(Qt.Horizontal, self)
+        self.quality_slider.setToolTip('Quality')
+        self.temp_slider.setToolTip('Temperature')
+        slider_layout.addWidget(self.quality_slider)
+        slider_layout.addWidget(self.temp_slider)
+        self.sliders.setLayout(slider_layout)
+
         self.button_bar = QWidget()
         button_layout = QHBoxLayout()
 
-        # self.progress_bar = QProgressBar()
         self.progress_bar = PercentProgressBar(self, showFreeArea=True,
                                                backgroundColor=QColor(178, 89, 110),
                                                borderColor=QColor(118, 179, 226),
                                                borderWidth=10)
-        # self.progress_bar.setFormat("%.02f %%" % value)
-        # self.raw_button = QPushButton()
         self.start_button = QPushButton()
         self.start_button.clicked.connect(self.start_prediction)
         self.quality_slider.valueChanged.connect(self.set_quality)
-        # self.blank = QWidget()
+        self.temp_slider.valueChanged.connect(self.set_temperature)
 
-        button_layout.addWidget(self.quality_slider)
         button_layout.addWidget(self.progress_bar)
-        # button_layout.addWidget(self.raw_button)
         button_layout.addWidget(self.start_button)
-
         self.button_bar.setLayout(button_layout)
-        predict_layout.addWidget(self.button_bar, STYLE['start_button']['grid3'])
+
+
+        slider_button_bar = QWidget()
+        slider_button_bar_layout = QHBoxLayout()
+        slider_button_bar_layout.addWidget(self.sliders)
+        slider_button_bar_layout.addWidget(self.button_bar)
+        slider_button_bar_layout.setSpacing(0)
+        slider_button_bar_layout.setContentsMargins(0, 0, 0, 0)
+        slider_button_bar.setLayout(slider_button_bar_layout)
+
+
+
+        # predict_layout.addWidget(self.button_bar, STYLE['start_button']['grid3'])
+        predict_layout.addWidget(slider_button_bar, STYLE['start_button']['grid3'])
 
         prediction.setLayout(predict_layout)
 
@@ -545,7 +639,9 @@ class MyMainWindow(QMainWindow):
                                  "color: #e9edf7;")
 
         # 滑块、按钮、进度条区域
-        self.button_bar.setStyleSheet("background-color: #e9edf7;")
+        # self.button_bar.setStyleSheet("background-color: #e9edf7;")
+        self.button_bar.setStyleSheet("background-color: #d6def0;")
+        self.sliders.setStyleSheet("background-color: #d6def0;")
         self.quality_slider.setMinimum(1)
         self.quality_slider.setMaximum(100)
         self.quality_slider.setSingleStep(1)
@@ -566,6 +662,28 @@ class MyMainWindow(QMainWindow):
             "QSlider::add-page:horizontal{background: #3a3c42;}"
             "QSlider::sub-page:horizontal{background: #b2596f; }"
         )
+
+        self.temp_slider.setMinimum(0)
+        self.temp_slider.setMaximum(100)
+        self.temp_slider.setSingleStep(10)
+        self.temp_slider.setValue(100)
+        self.temp_slider.setStyleSheet(
+            "QSlider::groove:horizontal {"
+            "border: 1px solid gray;"
+            "height: 5px;"
+            "left: 10px;"
+            "right: 20px;}"
+            "QSlider::handle:horizontal {"
+            "border: 1px solid gray;"
+            "background:white;"
+            "border-radius: 7px;"
+            "width: 14px;"
+            "height:14px;"
+            "margin: -6px;}"
+            "QSlider::add-page:horizontal{background: #3a3c42;}"
+            "QSlider::sub-page:horizontal{background: #4DA690; }"
+        )
+
 
         # 图片输入框
         font2 = QFont()
@@ -612,84 +730,130 @@ class MyMainWindow(QMainWindow):
             e.ignore()
 
     def dropEvent(self, e):
+        """
+        拖拽事件：将图像拖入到选框中
+        """
         for url in e.mimeData().urls():
             if url.isLocalFile():
                 self.predict_image = url.toLocalFile()
                 self.save_path = ''
-                # todo 多图像推理
+                # 获取所有图像
                 if os.path.isdir(self.predict_image):
-                    l = []
-                    for img in os.listdir(self.predict_image):
-                        try:
-                            # Image.open(os.path.join(self.predict_image, img))
-                            l.append(os.path.join(self.predict_image, img))
-                        except:
-                            continue
-                    self.predict_image = l
-                    self.display4image(os.path.join(file_path, 'static', 'src', 'file_temp1.png'))
+                    self.predict_image = [os.path.join(self.predict_image, img) for img in os.listdir(self.predict_image)]
                 else:
-                    try:
-                        # Image.open(self.predict_image)
-                        self.display4image(self.predict_image)
-                        self.predict_image = [self.predict_image]
-                    except:
-                        self.warning_box.setWindowTitle("Waring")
-                        self.warning_box.setText("Unable to open this image!")
-                        self.warning_box.setStandardButtons(QMessageBox.Ok)
-                        self.warning_box.exec_()
-                        self.predict_image = []
+                    self.predict_image = [self.predict_image]
+                # 判断图像类型
+                self.predict_image = [img for img in self.predict_image if self.judge_image(img)]
+                if self.predict_image:
+                    self.showing_image = self.predict_image[0]
+                    # 预测小图像
+                    img = cv2.imread(self.showing_image)
+                    img = cv2.resize(img,(600,int(600*img.shape[0]/img.shape[1])))
+                    self.temp_org_img,self.temp_pred_img = dynamic_infer(img, self.model, self.device)
+                    self.reshow(org_img=self.temp_org_img,pred_img=self.temp_pred_img)
+                else:
+                    self.warning_box.setWindowTitle("Waring")
+                    self.warning_box.setText("Unable to open this image!")
+                    self.warning_box.setStandardButtons(QMessageBox.Ok)
+                    self.warning_box.exec_()
+                    self.predict_image = []
+                    self.showing_image = ''
+
+    def reshow(self,org_img,pred_img):
+        temp = self.temp_slider.value() / 100
+        im = torch.tensor((1.0 - temp) * (org_img / 255.0) + temp * (pred_img / 255.0))
+        im = torch.clamp(im * 255, min=0, max=255).numpy().astype(np.uint8)
+        self.display4image(im)
 
     def display4image(self, image):
-        # 显示QLabel图片
-        pixmap = QPixmap(image)
-        self.img_input.setPixmap(pixmap.scaled(self.img_input.size(), transformMode=Qt.SmoothTransformation))
+
+        w, h = self.img_input.width(), self.img_input.height()
+        im = cv2.cvtColor(cv2.imread(image),cv2.COLOR_BGR2RGB) if isinstance(image,str) else image
+        # 保持原有的比例缩放
+        imH, imW, _ = im.shape
+        if (imW / imH) >= (w / h):
+            scale_w = w
+            scale_h = min(h, int(imH * (w / imW)))
+        else:
+            scale_w = min(w, int(imW * h / imH))
+            scale_h = h
+        im = cv2.resize(im, (scale_w, scale_h))
+
+        img_RGB = copy.deepcopy(self.background_img)
+        img_RGB = cv2.resize(img_RGB, (w, h))
+        x_pad, y_pad = int((w - scale_w) / 2), int((h - scale_h) / 2)
+        img_RGB[max(y_pad, 0):min(y_pad + scale_h, h), max(x_pad, 0):min(x_pad + scale_w, w), :] = im
+        # img_RGB = cv2.cvtColor(show_image, cv2.COLOR_BGR2RGB)
+        # img_RGB = show_image
+        q_image = QImage(img_RGB[:], img_RGB.shape[1], img_RGB.shape[0], img_RGB.shape[1] * 3,
+                         QImage.Format_RGB888)
+        pixmap = QPixmap.fromImage(q_image)
+        # pixmap = QPixmap(image)
+        # self.img_input.setPixmap(pixmap.scaled(self.img_input.size(), transformMode=Qt.SmoothTransformation))
+        self.img_input.setPixmap(pixmap)
         self.img_input.setAlignment(Qt.AlignCenter)
+
+    def judge_image(self,image):
+        image_type = image.split('.')[-1]
+        if image_type.lower() in ['jpg','png','jpeg','tif','tiff','jp2']:
+            if cv2.imread(image) is not None:
+                return True
+            else:
+                return False
+        else:
+            return False
 
     def set_quality(self):
         # 设置输出图像的质量
         self.quality_num = self.quality_slider.value()
 
+    def set_temperature(self):
+        # 动态显示图像色彩
+        if self.temp_pred_img is not None:
+            self.reshow(org_img=self.temp_org_img, pred_img=self.temp_pred_img)
+
     def resizeEvent(self, e):
         # 改变窗口大小后QLabel中的图片重新加载
         if e.type() == QEvent.Resize:
-            if os.path.exists(self.save_path):
-                self.display4image(self.save_path)
-            elif os.path.exists(self.predict_image):
-                self.display4image(self.predict_image)
+            if self.temp_pred_img is not None:
+                self.reshow(org_img=self.temp_org_img, pred_img=self.temp_pred_img)
 
     def start_prediction(self):
-
         if self.predict_image:
-
-            if len(self.predict_image) == 1:
-                file_name, file_type = os.path.splitext(self.predict_image[0])
-                self.save_path = f"{file_name}_{self.default_filter}{file_type}"
-            else:
-                self.save_path = os.path.join(file_path, 'static', 'src', 'file_temp2.png')
+            file_name, file_type = os.path.splitext(self.predict_image[-1])
+            self.save_path = f"{file_name}_{self.default_filter}{file_type}"
             self.prediction_thread = PredictionThread(self.predict_image, self.model, self.device,
-                                                      self.quality_num, self.default_filter)
+                                                      self.quality_num, self.default_filter,self.temp_slider.value()/100)
             self.prediction_thread.worker.update_progress.connect(self.update_progress_bar)
-            self.prediction_thread.finished.connect(lambda: self.display4image(self.save_path))
+            # self.prediction_thread.finished.connect(lambda: self.finish_prediction(self.save_path))
             self.start_button.setEnabled(False)
             self.prediction_thread.start()
         else:
             # self.warning_box.setIcon(QMessageBox.Warning)
             self.warning_box.setWindowTitle("Waring")
-            self.warning_box.setText("One Image At Least, Please!")
+            self.warning_box.setText("Input one image at least, Please!")
             self.warning_box.setStandardButtons(QMessageBox.Ok)
             self.warning_box.exec_()
+
+    # def finish_prediction(self,save_path):
+    #     self.finishing_image = save_path
+    #     self.display4image(self.finishing_image,dynamic=False)
 
     def update_progress_bar(self, value):
         self.progress_bar.setValue(value)
         if value == 100:
             self.start_button.setEnabled(True)
+            # todo 新增保存路径提示
+            self.warning_box.setWindowTitle("Notice！")
+            self.warning_box.setText(f"Save Dir: {os.path.dirname(self.save_path)}")
+            self.warning_box.setStandardButtons(QMessageBox.Ok)
+            self.warning_box.exec_()
 
     def choose4filters(self, clicked_button):
         for button, filter_name in self.filter_buttons:
             if button is clicked_button:
                 self.default_filter = filter_name.replace('-ORG', '').replace('.png', '')
                 pth_name = self.checkpoints_dict[self.default_filter]
-                # todo add gray-channel to the list
                 if self.default_filter in self.gray_list:
                     self.model = FilterSimulation(channel=1)
                 else:
@@ -701,6 +865,13 @@ class MyMainWindow(QMainWindow):
                                                     filter_name.replace('-ORG', '')).replace('\\', '/')
                                      + ");}"  # 背景颜色
                                      )
+                # 同时更改预览图像
+                if self.showing_image:
+                    img = cv2.imread(self.showing_image)
+                    img = cv2.resize(img, (600, int(600 * img.shape[0] / img.shape[1])))
+                    self.temp_org_img, self.temp_pred_img = dynamic_infer(img, self.model, self.device)
+                    self.reshow(org_img=self.temp_org_img, pred_img=self.temp_pred_img)
+
             else:
                 button.setStyleSheet("QPushButton { border-image: url("
                                      + os.path.join(file_path, 'static', 'src', filter_name).replace('\\', '/')

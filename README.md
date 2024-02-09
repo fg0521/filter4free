@@ -30,10 +30,10 @@
 
 ###### 富士色彩模拟
 1. `ACROS `：❎
-2. `CLASSIC CHROME` ：❎
+2. `CLASSIC CHROME` ：**static/checkpoints/fuji/classic-chrome/best.pth**✅
 3. `ETERNA `：❎
 4. `ETERNA BLEACH BYPASS `：❎
-5. `CLASSIC Neg. `：❎
+5. `CLASSIC Neg. `：**static/checkpoints/fuji/classic-neg/best.pth**✅
 6. `PRO Neg.Hi `：❎
 7. `NOSTALGIC Neg.`：**static/checkpoints/fuji/nostalgic-neg/best.pth** ✅
 8. `PRO Neg.Std` ：❎
@@ -80,13 +80,19 @@
 
 ###### Windows GUI
 
-1. `Windows`链接: https://pan.baidu.com/s/1STMCrbVgPygCdWKEn_Mtmg 提取码: a3ue
+1. `Windows`链接
+- 【V1.0】链接: https://pan.baidu.com/s/1WsBZbzCftyTMy3ZmzhJlDA 提取码: fmnq
+- 【V1.1】链接: https://pan.baidu.com/s/1icLOXtVjUYqTkeDqf-o8Ag 提取码:e939
 2. 运行AIFilter.dist中的**AIFilter.exe**可执行文件
 
 ###### MacOS GUI
 
-1. `Apple Silicon`链接(M1/M2/m3): https://pan.baidu.com/s/16J-KLy-8VjAhCjbnURC10A 提取码: maim 
-2. `Intel`链接(i5/i7/i9): https://pan.baidu.com/s/1MFww31KUhf6mG8QQBs_zhQ 提取码: enpi 
+1. `Apple Silicon`链接(M1/M2/m3)
+- 【V1.0】链接: https://pan.baidu.com/s/1N5ux3eSUgYQTSB30iFw1GQ 提取码: nck8 
+- 【V1.1】链接: https://pan.baidu.com/s/1rnI5xPbwTkuZmetiWv0_6A 提取码: trbp 
+2. `Intel`链接(i5/i7/i9)
+- 【V1.0】链接: https://pan.baidu.com/s/14afbEXX_C4F7b-OeFHXRQg 提取码: mjc7 
+- 【V1.1】链接: https://pan.baidu.com/s/1SmBLFE7MT4KwxzbSzpJGYA 提取码: nbue 
 3. 运行`AIFilter.app` 或者拖到`应用程序`中
 
 ###### GUI介绍
@@ -111,13 +117,22 @@
   2. 安装`command-line-tools`：在`【终端】`中运行`xcode-select --install`命令进行安装，安装完成后输入`sudo codesign --force --deep --sign - 你的app路径` ，例如：`sudo codesign --force --deep --sign -  /Applications/FilterSimulation.app`
   
 -  其他相机/手机使用后是否存在偏差
+
   
--  
-  
-  
+
 
 #### TODO
 
 1.收集相关图像数据训练更多类型胶片模拟
 
 2.尝试统一所有设备（iphone/安卓/佳能/尼康等相机）到胶片模拟的映射
+
+#### Update
+1. 【24.01.21|Beta1.0】
+- `Velvia`、`nn`、`nlp`等胶片滤镜6个
+- `GUI`界面
+2. 【24.02.05|Beta1.1】
+- 新增富士`nc`、`cc`两个胶片模拟
+- 新增`保存路径提示弹窗`
+- 修复png图像加载出错问题，图像格式为`opencv所支持的图像类型`
+- 修复图像加载显示问题，保留`原始图像比例`进行`自适应填充`
