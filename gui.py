@@ -8,14 +8,10 @@ import torch
 from PyQt5.QtWidgets import QMainWindow, QButtonGroup, \
     QScrollArea, QPushButton, QLabel, QMessageBox, QApplication, QWidget, QHBoxLayout, QVBoxLayout, QSlider
 from PyQt5.QtCore import pyqtSignal, QObject, QThread, pyqtProperty, QSize, Qt, QRectF, QEvent
-from infer import image2block
-from models import FilterSimulation
+from infer import image2block, infer
+from models import UNet
 from PyQt5.QtGui import QColor, QPainter, QFont, QPixmap, QImage
-import json
-
 file_path = os.path.dirname(__file__)
-with open(os.path.join(file_path, 'static', 'config.json'), 'r') as f:
-    STYLE = json.load(f)[sys.platform]
 
 
 class PercentProgressBar(QWidget):
@@ -139,7 +135,7 @@ class PercentProgressBar(QWidget):
         # 绘制文字
         painter.save()
         painter.setPen(self.TextColor)
-        painter.setFont(QFont('Arial', STYLE['progress_bar']['font_size']))
+        painter.setFont(QFont('Arial', 24))
         strValue = '{}%'.format(int(self.Value / (self.MaxValue - self.MinValue)
                                     * 100)) if self.ShowPercent else str(self.Value)
         painter.drawText(QRectF(-radius, -radius, radius * 2,
@@ -268,56 +264,40 @@ class PredictionWorker(QObject):
 
     def predict(self, model, device, image_list, filter_name, temperature=1.0,quality=100, padding=16, patch_size=640, batch=8):
         model = model.to(device)
-        channel = model.state_dict()['decoder.4.bias'].shape[0]
         start = 0
-        # targets = []
         for n, image in enumerate(image_list):
             img = cv2.imread(image) if isinstance(image,str) else image
-            # 对每个小块进行推理
-            if channel == 1:
-                # 黑白滤镜
-                if img.shape[2] == 3:
-                    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            else:
-                # 彩色滤镜
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            target = np.zeros(shape=(img.shape), dtype=np.uint8)
-            split_images, size_list = image2block(img, patch_size=patch_size, padding=padding)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            split_images, row, col = image2block(img, patch_size=patch_size, padding=padding)
+            target = torch.zeros((row * patch_size, col * patch_size, 3), dtype=torch.float32)
             # 第n张图片的耗时时间 均分
             end = 100 / len(image_list) * (n + 1)
             each_start = start
             with torch.no_grad():
                 for i in range(0, len(split_images), batch):
-                    input = torch.vstack(split_images[i:i + batch])
-                    input = input.to(device)
-                    output = model(input)
-                    for k in range(output.shape[0]):
-                        out = torch.clamp(output[k, :, :, :] * 255, min=0, max=255).byte().permute(1, 2,
-                                                                                                   0).detach().cpu().numpy()
-                        x, y, w, h = size_list[i + k]
-                        out = cv2.resize(out, (w, h))
-                        out = out[padding:h - padding, padding:w - padding]
-                        target[y:y + out.shape[0], x:x + out.shape[1], :] = out
+                    batch_input = torch.cat(split_images[i:i + batch], dim=0)
+                    batch_output = model(batch_input.to(device))
+                    batch_output = batch_output[:, :, padding:-padding, padding:-padding].permute(0, 2, 3,
+                                                                                                  1).cpu()
+                    for j, output in enumerate(batch_output):
+                        y = (i + j) // col * patch_size
+                        x = (i + j) % col * patch_size
+                        target[y:y + patch_size, x:x + patch_size] = output
                     if end == 100:
                         each_end = 101
                     else:
                         each_end = int(min(end, each_start + (end - start) * min(1.0, (i + 1) / len(split_images)))) + 1
-                    # print(end)
-                    # print(each_start + (end - start) * min(1.0, (i + 1) / len(split_images)))
                     for num in range(each_start, each_end):
-                        # print(each_start,'\t',each_end)
                         self.update_progress.emit(num)
                         time.sleep(0.05)
                     each_start = each_end
             start = int(end)
             file_name, file_type = os.path.splitext(image)
-            target = torch.tensor((1.0 - temperature) * (img / 255.0) + temperature * (target / 255.0))
-            target = torch.clamp(target * 255, min=0, max=255).numpy().astype(np.uint8)
+            target = target[:img.shape[0], :img.shape[1]].numpy()
+            target = (1.0 - temperature) * img + temperature * target
+            target = np.clip(target * 255, a_min=0, a_max=255).astype(np.uint8)
             target = cv2.cvtColor(target, cv2.COLOR_RGB2BGR)
-
             cv2.imwrite(file_name + f"_{filter_name}" + file_type, target, [cv2.IMWRITE_JPEG_QUALITY, quality])
-            # targets.append(target)
-        # return targets
 
 
 class PredictionThread(QThread):
@@ -338,40 +318,6 @@ class PredictionThread(QThread):
                             filter_name=self.filter_name,
                             temperature=self.temperature)
 
-def dynamic_infer(image, model, device, patch_size=448, padding=16, batch=8):
-    """
-    通过滑块来实现动态调整色彩
-    """
-    # img = cv2.imread(image)
-    # channel = model.state_dict()['decoder.4.bias'].shape[0] # 获取加载的模型的通道
-    model = model.to(device)
-    channel = 3  # 获取加载的模型的通道
-    if channel == 1:
-        # 黑白滤镜
-        if image.shape[2] == 3:
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    else:
-        # 彩色滤镜
-        image= cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    # 对每个小块进行推理
-    target = np.zeros(shape=(image.shape), dtype=np.uint8)
-    split_images, size_list = image2block(image, patch_size=patch_size, padding=padding)
-    with torch.no_grad():
-        for i in range(0, len(split_images), batch):
-            input = torch.vstack(split_images[i:i + batch])
-            input = input.to(device)
-            output = model.forward(input)
-            for k in range(output.shape[0]):
-                # RGB Channel
-                out = torch.clamp(output[k, :, :, :] * 255, min=0, max=255).byte().permute(1, 2, 0).detach().cpu().numpy()
-                x, y, w, h = size_list[i + k]
-                out = cv2.resize(out, (w, h))
-                out = out[padding:h - padding, padding:w - padding]
-                target[y:y + out.shape[0], x:x + out.shape[1]] = out
-
-    return image,target
-
-
 
 class MyMainWindow(QMainWindow):
     def __init__(self):
@@ -379,7 +325,7 @@ class MyMainWindow(QMainWindow):
         self.predict_image = ''
         self.save_path = ''
         self.showing_image = ''# 当前正在显示的图像
-        self.default_filter = 'FJ-V'
+        self.default_filter = 'FJ-NC'
         self.quality_num = 100  # 默认图像质量
         # self.temperature = 100  # 默认温度系数 100为正常滤镜
         self.temp_pred_img = None
@@ -390,6 +336,7 @@ class MyMainWindow(QMainWindow):
             self.device = torch.device('mps')
         else:
             self.device = torch.device('cpu')
+        self.model = self.model.to(self.device)
         self.background_img = cv2.cvtColor(cv2.imread(os.path.join(file_path,'static/src/background.jpg')),cv2.COLOR_BGR2RGB)
         self.checkpoints_dict = {
             'FilmMask': os.path.join(file_path, 'static', 'checkpoints', 'film-mask', 'best.pth'),  # 去色罩
@@ -429,13 +376,16 @@ class MyMainWindow(QMainWindow):
             'KD-E100': '',
             'KD-Ektar100': '',
 
-            # # Digital
-            # # Olympus Filters
-            # "OM-VIVID": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'vivid', 'best.pth'),  # 浓郁色彩
-            # "OM-SoftFocus": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'soft-focus', 'best.pth'),  # 柔焦
-            # "OM-SoftLight": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'soft-light', 'best.pth'),  # 柔光
-            # "OM-Nostalgia": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'nostalgia', 'best.pth'),   # 怀旧颗粒
-            # "OM-Stereoscopic": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'stereoscopic', 'best.pth'), # 立体
+            # Polaroid
+            'Polaroid':os.path.join(file_path,'static','checkpoints', 'polaroid','best.pth'),
+
+            # Digital
+            # Olympus Filters
+            "OM-VIVID": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'vivid', 'best.pth'),  # 浓郁色彩
+            "OM-SoftFocus": '',  # 柔焦
+            "OM-SoftLight": '',  # 柔光
+            "OM-Nostalgia": '',   # 怀旧颗粒
+            "OM-Stereoscopic": '', # 立体
             # # Richo Filters
             # 'R-Std': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'std', 'best.pth'),  # 标准
             # 'R-Vivid': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'vivid', 'best.pth'),  # 鲜艳
@@ -485,6 +435,7 @@ class MyMainWindow(QMainWindow):
             'KD-Portra160NC': '微妙的色彩和平滑、自然的肤色',
             'KD-E100': '极细的颗粒结构，充满活力的显色性，整体低对比度轮廓',
             'KD-Ektar100': '超鲜艳的调色、高饱和度和极其精细的颗粒结构',
+            'Polariod':'具有艺术感的色彩'
         }
         self.gray_list = ['FJ-A']
         self.model.load_state_dict(
@@ -498,9 +449,9 @@ class MyMainWindow(QMainWindow):
         # 创建一个中心的 QWidget 用于容纳垂直布局
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        self.setGeometry(STYLE['window']['x'], STYLE['window']['y'],
-                         STYLE['window']['width'], STYLE['window']['height'])
-        self.setMinimumSize(STYLE['window']['width'], STYLE['window']['height'])
+        self.setGeometry(100, 100,
+                        600, 500)
+        self.setMinimumSize(600, 500)
 
         # 整体设置垂直布局->上中下
         window_layout = QVBoxLayout()
@@ -509,7 +460,7 @@ class MyMainWindow(QMainWindow):
 
         # 上布局：设置标题为 Filter For Free
         self.title = QLabel('Filter For Free')
-        window_layout.addWidget(self.title, STYLE['title']['grid1'])
+        window_layout.addWidget(self.title, 5)
 
         # 中布局：设置滤镜选择、图片输入、按钮、进度条
         # 中布局设置水平布局
@@ -530,8 +481,8 @@ class MyMainWindow(QMainWindow):
         filter_list = sorted([i for i in os.listdir(os.path.join(file_path, 'static', 'src')) if i.endswith("ORG.png")])
         for filter_name in filter_list:  # 根据图片动态创建按钮
             button = QPushButton()
-            button.setFixedWidth(STYLE['filter_button']['width'])
-            button.setFixedHeight(STYLE['filter_button']['height'])  # 设置按钮高度
+            button.setFixedWidth(80)
+            button.setFixedHeight(80)  # 设置按钮高度
             if 'ORG' in filter_name:
                 button.setToolTip(f'{self.description[filter_name.replace("-ORG.png","")]}')
             if filter_name.replace('-ORG.png', '') == self.default_filter:
@@ -556,7 +507,7 @@ class MyMainWindow(QMainWindow):
 
         all_filters.setLayout(filter_layout)
         self.filters.setWidget(all_filters)
-        content_layout.addWidget(self.filters, STYLE['filter_button']['grid2'])
+        content_layout.addWidget(self.filters, 2)
         # 右边为预测区域，设置垂直布局
         prediction = QWidget()
         predict_layout = QVBoxLayout()
@@ -567,7 +518,7 @@ class MyMainWindow(QMainWindow):
         self.img_input = QLabel('Drag Image Here')
         # self.img_input.setAcceptDrops(True) # 启用 QLabel 接受拖放事件
 
-        predict_layout.addWidget(self.img_input, STYLE['image_input']['grid3'])
+        predict_layout.addWidget(self.img_input, 4)
 
         # 按钮和进度条，设置水平布局
         self.sliders = QWidget()
@@ -608,19 +559,19 @@ class MyMainWindow(QMainWindow):
 
 
         # predict_layout.addWidget(self.button_bar, STYLE['start_button']['grid3'])
-        predict_layout.addWidget(slider_button_bar, STYLE['start_button']['grid3'])
+        predict_layout.addWidget(slider_button_bar, 1)
 
         prediction.setLayout(predict_layout)
 
-        content_layout.addWidget(prediction, STYLE['image_input']['grid2'])
+        content_layout.addWidget(prediction, 5)
 
         filters_images.setLayout(content_layout)
 
-        window_layout.addWidget(filters_images, STYLE['filter_button']['grid1'])
+        window_layout.addWidget(filters_images, 15)
 
         # 底部留白区域
         self.bottom = QWidget()
-        window_layout.addWidget(self.bottom, STYLE['bottom']['grid1'])
+        window_layout.addWidget(self.bottom, 1)
 
         # 设置中心窗口的布局
         central_widget.setLayout(window_layout)
@@ -632,7 +583,7 @@ class MyMainWindow(QMainWindow):
         # 标题区域
         font1 = QFont()
         font1.setBold(True)
-        font1.setPointSize(STYLE['title']['font_size'])
+        font1.setPointSize(72)
         self.title.setAlignment(Qt.AlignCenter)
         self.title.setFont(font1)
         self.title.setStyleSheet("background-color: #76b3e2;"
@@ -695,10 +646,10 @@ class MyMainWindow(QMainWindow):
         self.img_input.setFont(font2)
 
         # 按钮
-        self.progress_bar.setFixedWidth(STYLE['progress_bar']['width'])
-        self.progress_bar.setFixedHeight(STYLE['progress_bar']['height'])
-        self.start_button.setFixedWidth(STYLE['start_button']['width'])
-        self.start_button.setFixedHeight(STYLE['start_button']['height'])
+        self.progress_bar.setFixedWidth(60)
+        self.progress_bar.setFixedHeight(60)
+        self.start_button.setFixedWidth(60)
+        self.start_button.setFixedHeight(60)
 
         self.start_button.setStyleSheet("QPushButton { "
                                         + "border-image: url("
@@ -749,7 +700,7 @@ class MyMainWindow(QMainWindow):
                     # 预测小图像
                     img = cv2.imread(self.showing_image)
                     img = cv2.resize(img,(600,int(600*img.shape[0]/img.shape[1])))
-                    self.temp_org_img,self.temp_pred_img = dynamic_infer(img, self.model, self.device)
+                    self.temp_org_img,self.temp_pred_img = infer(img, self.model, self.device)
                     self.reshow(org_img=self.temp_org_img,pred_img=self.temp_pred_img)
                 else:
                     self.warning_box.setWindowTitle("Waring")
@@ -761,8 +712,9 @@ class MyMainWindow(QMainWindow):
 
     def reshow(self,org_img,pred_img):
         temp = self.temp_slider.value() / 100
-        im = torch.tensor((1.0 - temp) * (org_img / 255.0) + temp * (pred_img / 255.0))
-        im = torch.clamp(im * 255, min=0, max=255).numpy().astype(np.uint8)
+        im = (1.0 - temp) * (org_img / 255.0) + temp * (pred_img / 255.0)
+        # im = torch.clamp(im * 255, min=0, max=255).numpy().astype(np.uint8)
+        im = np.clip(im * 255, a_min=0, a_max=255).astype(np.uint8)
         self.display4image(im)
 
     def display4image(self, image):
@@ -855,11 +807,14 @@ class MyMainWindow(QMainWindow):
                 self.default_filter = filter_name.replace('-ORG', '').replace('.png', '')
                 pth_name = self.checkpoints_dict[self.default_filter]
                 if self.default_filter in self.gray_list:
-                    self.model = FilterSimulation(channel=1)
+                    # self.model = FilterSimulation(channel=1)
+                    self.model = UNet(channel=1)
                 else:
-                    self.model = FilterSimulation(channel=3)
+                    # self.model = FilterSimulation(channel=3)
+                    self.model = UNet(channel=3)
                 self.model.load_state_dict(
                     state_dict=torch.load(pth_name, map_location=self.device))
+                self.model = self.model.to(self.device)
                 button.setStyleSheet("QPushButton { border-image: url("
                                      + os.path.join(file_path, 'static', 'src',
                                                     filter_name.replace('-ORG', '')).replace('\\', '/')
@@ -869,7 +824,7 @@ class MyMainWindow(QMainWindow):
                 if self.showing_image:
                     img = cv2.imread(self.showing_image)
                     img = cv2.resize(img, (600, int(600 * img.shape[0] / img.shape[1])))
-                    self.temp_org_img, self.temp_pred_img = dynamic_infer(img, self.model, self.device)
+                    self.temp_org_img, self.temp_pred_img = infer(img, self.model, self.device)
                     self.reshow(org_img=self.temp_org_img, pred_img=self.temp_pred_img)
 
             else:

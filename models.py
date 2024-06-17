@@ -2,68 +2,32 @@ import os
 import torch.nn.functional as F
 import torch
 import torch.nn as nn
-from fvcore.nn import FlopCountAnalysis
 from torchvision import models, transforms
-from kornia.geometry.transform import resize
-from kornia.enhance.normalize import Normalize
-from torchvision.models import efficientnet_b0
 
 
 
-
-class FilterSimulationFast(nn.Module):
-    def __init__(self, channel=3,training=False):
-        super(FilterSimulationFast, self).__init__()
-        self.encoder = nn.Sequential(
-            nn.Conv2d(channel, channel, kernel_size=3, padding=1, groups=channel),
-            nn.Conv2d(channel, 32, kernel_size=1),
-            nn.ReLU(),
-            nn.Conv2d(32, 32, kernel_size=3, padding=1, groups=32),
-            nn.Conv2d(32, 64, kernel_size=1),
-            nn.ReLU(),
-            nn.AvgPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(64, 64, kernel_size=3, padding=1, groups=64),
-            nn.Conv2d(64, 64, kernel_size=1),
-            nn.ReLU()
-        )
-        self.decoder = nn.Sequential(
-            # nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2),
-            nn.Conv2d(64, 32 * (2 ** 2),kernel_size=1),
-            nn.PixelShuffle(2),
-            nn.ReLU(),
-            nn.Conv2d(32, 32, kernel_size=3, padding=1, groups=32),
-            nn.Conv2d(32, 32, kernel_size=1),
-            nn.ReLU(),
-            nn.Conv2d(32, channel, kernel_size=3, padding=1),
-        )
-        if training:
-            for net in ['self.encoder', 'self.decoder']:
-                for n in eval(net):
-                    if n._get_name() in ['Conv2d', 'ConvTranspose2d']:
-                        nn.init.kaiming_uniform_(n.weight, mode='fan_in', nonlinearity='relu')
+class PConv2d(nn.Module):
+    def __init__(self, dim, n_div=4,kernel_size=3):
+        super().__init__()
+        self.dim_conv3 = dim // n_div
+        self.dim_untouched = dim - self.dim_conv3
+        self.partial_conv3 = nn.Conv2d(in_channels=self.dim_conv3, out_channels=self.dim_conv3, kernel_size=kernel_size, stride=1, padding=(kernel_size - 1) // 2, bias=False)
 
     def forward(self, x):
-        x = F.pad(x, (16, 16, 16, 16), mode='replicate')
-        x = self.encoder(x)
-        x = self.decoder(x)
-        x = x[:, :, 16:-16, 16:-16]  # 调整padding以移除额外边缘
+        # for training/inference
+        x1, x2 = torch.split(x, [self.dim_conv3, self.dim_untouched], dim=1)
+        x1 = self.partial_conv3(x1)
+        x = torch.cat((x1, x2), 1)
         return x
 
 
-
-
-class FilterSimulation(nn.Module):
+class FilterSimulation1(nn.Module):
     """
-    滤镜模拟
-    AdamW: lr=0.002
-    loss: L1Loss+RGBLoss
-    训练数据: 150张图片
-    训练通道: RGB
-    epoch: 150
+    版本1：二维卷积+二维反卷积
+    注：小分辨率图像容易出现棋盘效应问题
     """
-
-    def __init__(self, training=False, channel=3):
-        super(FilterSimulation, self).__init__()
+    def __init__(self, channel=3,training=False):
+        super(FilterSimulation1, self).__init__()
         self.encoder = nn.Sequential(
             nn.Conv2d(channel, 32, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
@@ -81,7 +45,123 @@ class FilterSimulation(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(32, 32, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
-            # nn.ConvTranspose2d(32, channel, kernel_size=2, stride=2)
+            nn.ConvTranspose2d(32, channel, kernel_size=2, stride=2),
+        )
+        if training:
+            for net in ['self.encoder', 'self.decoder']:
+                for n in eval(net):
+                    if n._get_name() in ['Conv2d', 'ConvTranspose2d']:
+                        nn.init.kaiming_uniform_(n.weight, mode='fan_in', nonlinearity='relu')
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+
+
+class FilterSimulation2(nn.Module):
+    """
+    版本2：二维卷积+双线性插值
+    注：解决棋盘效应，考虑压缩模型大小
+    """
+    def __init__(self, channel=3,training=False):
+        super(FilterSimulation2, self).__init__()
+        self.encoder = nn.Sequential(
+            nn.Conv2d(channel, 32, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.AvgPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.1)
+        )
+        self.decoder = nn.Sequential(
+            nn.Conv2d(64, 32, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+        )
+        self.final_conv = nn.Conv2d(32, 3, kernel_size=3, padding=1)
+        if training:
+            for net in ['self.encoder', 'self.decoder']:
+                for n in eval(net):
+                    if n._get_name() in ['Conv2d', 'ConvTranspose2d']:
+                        nn.init.kaiming_uniform_(n.weight, mode='fan_in', nonlinearity='relu')
+
+    def forward(self, x):
+        x1 = self.encoder(x)
+        x2 = self.decoder(x1)
+        x2 = F.interpolate(x2, mode='bilinear', size=x.shape[2:], align_corners=False)
+        x2 = self.final_conv(x2)
+        return x2
+
+
+class FilterSimulation3(nn.Module):
+    """
+    版本2：可分离通道卷积+双线性插值
+    注：压缩模型大小 380K->80K
+
+    """
+    def __init__(self, channel=3,training=False):
+        super(FilterSimulation3, self).__init__()
+        self.encoder = nn.Sequential(
+            nn.Conv2d(channel, channel, kernel_size=3, padding=1, groups=channel),
+            nn.Conv2d(channel, 32, kernel_size=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=3, padding=1, groups=32),
+            nn.Conv2d(32, 64, kernel_size=1),
+            nn.ReLU(),
+            nn.AvgPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1, groups=64),
+            nn.Conv2d(64, 64, kernel_size=1),
+            nn.ReLU(),
+            nn.Dropout(0.1)
+        )
+        self.decoder = nn.Sequential(
+            nn.Conv2d(64, 32, kernel_size=3, padding=1, groups=32),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 32, kernel_size=3, padding=1, groups=32),
+            nn.ReLU(inplace=True),
+        )
+        self.final_conv = nn.Conv2d(32, 3, kernel_size=3, padding=1)
+        if training:
+            for net in ['self.encoder', 'self.decoder']:
+                for n in eval(net):
+                    if n._get_name() in ['Conv2d', 'ConvTranspose2d']:
+                        nn.init.kaiming_uniform_(n.weight, mode='fan_in', nonlinearity='relu')
+
+    def forward(self, x):
+        x1 = self.encoder(x)
+        x2 = self.decoder(x1)
+        x2 = F.interpolate(x2, mode='bilinear', size=x.shape[2:], align_corners=False)
+        x2 = self.final_conv(x2)
+        return x2
+
+
+class FilterSimulation4(nn.Module):
+    def __init__(self, training=False, channel=3):
+        super(FilterSimulation4, self).__init__()
+        self.encoder = nn.Sequential(
+            nn.Conv2d(channel, 32, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            PConv2d(32),
+            nn.ReLU(inplace=True),
+            nn.AvgPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            PConv2d(64),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.1)
+        )
+
+        self.decoder = nn.Sequential(
+            nn.Conv2d(64, 32, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            PConv2d(32),
+            nn.ReLU(inplace=True),
         )
         self.final_conv = nn.Conv2d(32,3,kernel_size=3,padding=1)
         if training:
@@ -96,7 +176,7 @@ class FilterSimulation(nn.Module):
         x1 = self.encoder(x)
         # 解码器
         x2 = self.decoder(x1)
-        x2 = F.interpolate(x2, mode='bilinear', size=x.shape[2:], align_corners=False)
+        x2 = F.interpolate(x2, mode='bilinear', scale_factor=2, align_corners=False)
         x2 = self.final_conv(x2)
         # 引入温度系数 来控制图像变化
         x2 = (1.0 - temp) * x + temp * x2
@@ -104,158 +184,169 @@ class FilterSimulation(nn.Module):
 
 
 
+class DoubleConv(nn.Module):
+    """(convolution => [BN] => ReLU) * 2"""
 
-
-class FilterSimulationConvert(nn.Module):
-    """
-    滤镜模拟
-    AdamW: lr=0.002
-    loss: L1Loss+RGBLoss
-    训练数据: 150张图片
-    训练通道: RGB
-    epoch: 150
-    """
-
-    def __init__(self):
-        super(FilterSimulationConvert, self).__init__()
-        self.encoder = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=3, padding=1),
+    def __init__(self, in_channels, out_channels, mid_channels=None):
+        super().__init__()
+        if not mid_channels:
+            mid_channels = out_channels
+        self.double_conv = nn.Sequential(
+            nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
             nn.ReLU(inplace=True),
-            nn.Conv2d(32, 32, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.AvgPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            PConv2d(mid_channels),
             nn.ReLU(inplace=True)
         )
-        self.decoder = nn.Sequential(
-            nn.Conv2d(64, 32, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(32, 32, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
+
+    def forward(self, x):
+        return self.double_conv(x)
+
+
+class Down(nn.Module):
+    """Downscaling with maxpool then double conv"""
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.maxpool_conv = nn.Sequential(
+            nn.MaxPool2d(2),
+            DoubleConv(in_channels, out_channels)
         )
-        self.final_conv = nn.Conv2d(32,3,kernel_size=3,padding=1)
+
+    def forward(self, x):
+        return self.maxpool_conv(x)
 
 
-    def forward(self, x,temp):
-        # 编码器
-        x1 = self.encoder(x)
-        # 解码器
-        x1 = self.decoder(x1)
-        x1 = F.interpolate(x1,scale_factor=2, mode='bilinear', align_corners=False)
-        x1 = self.final_conv(x1)
-        # 引入温度系数 来控制图像变化
-        x1 = (1.0 - temp) * x + temp * x1
-        return x1
+class Up(nn.Module):
+    """Upscaling then double conv"""
 
-
-"""
-https://arxiv.org/abs/2303.13511
-Neural Preset for Color Style Transfer
-"""
-
-class DNCM(nn.Module):
-    def __init__(self, k) -> None:
+    def __init__(self, in_channels):
         super().__init__()
-        self.P = nn.Parameter(torch.empty((3, k)), requires_grad=True)
-        self.Q = nn.Parameter(torch.empty((k, 3)), requires_grad=True)
-        torch.nn.init.kaiming_normal_(self.P)
-        torch.nn.init.kaiming_normal_(self.Q)
-        self.k = k
+        self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        self.conv1 = DoubleConv(in_channels, in_channels // 2)
+        self.conv2 = DoubleConv(in_channels, in_channels // 2)
 
-    def forward(self, I, T):
-        bs, _, H, W = I.shape   # [b,c,h,w]
-        x = torch.flatten(I, start_dim=2).transpose(1, 2)   # [b,h*w,c]
-        out = x @ self.P @ T.view(bs, self.k, self.k) @ self.Q  # [b,h*w,c]
-        out = out.view(bs, H, W, -1).permute(0, 3, 1, 2)    # [b,c,h,w]
-        return out
+    def forward(self, x1, x2):
+        x1 = self.conv1(self.up(x1))
+        diffY = x2.size()[2] - x1.size()[2]
+        diffX = x2.size()[3] - x1.size()[3]
+        x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2,
+                        diffY // 2, diffY - diffY // 2])
+        x = torch.cat([x2, x1], dim=1)
+        return self.conv2(x)
 
 
-class Encoder(nn.Module):
-    def __init__(self, sz, k) -> None:
+class UNet(nn.Module):
+    def __init__(self, channel=3):
+        super(UNet, self).__init__()
+        self.inc = (DoubleConv(channel, 32))
+        self.down1 = (Down(32, 64))
+        self.down2 = (Down(64, 128))
+        self.up2 = (Up(128))
+        self.up3 = (Up(64))
+        self.outc = nn.Conv2d(32, 3, kernel_size=1)
+
+    def forward(self, x):
+        x1 = self.inc(x)    #[bs,32,256,256]
+        x2 = self.down1(x1) #[bs,64,128,128]
+        x3 = self.down2(x2) #[bs,128,64,64]
+        x = self.up2(x3, x2)
+        x = self.up3(x, x1)
+        logits = self.outc(x)
+        return logits
+
+
+
+class UNet4UCM(nn.Module):
+    def __init__(self, channel=4):
+        super(UNet4UCM, self).__init__()
+        self.inc = (DoubleConv(channel, 32))
+        self.down1 = (Down(32, 64))
+        self.down2 = (Down(64, 128))
+        self.up2 = (Up(128))
+        self.up3 = (Up(64))
+        self.outc = nn.Conv2d(32, 3, kernel_size=1)
+
+    def forward(self, content_features, color_features):
+        x = torch.cat((content_features, color_features), dim=1)  # [bs, 4, 256, 256]
+        x1 = self.inc(x)    #[bs,32,256,256]
+        x2 = self.down1(x1) #[bs,64,128,128]
+        x3 = self.down2(x2) #[bs,128,64,64]
+        x = self.up2(x3, x2)
+        x = self.up3(x, x1)
+        logits = self.outc(x)
+        return logits
+
+
+class UCM(nn.Module):
+    def __init__(self, k=128,continue_train=False) -> None:
         super().__init__()
-        self.normalizer = Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         self.backbone = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.DEFAULT)
+        self.k = k
+        self.sNet = UNet4UCM()
+        self.cNet = UNet4UCM()
         self.D = nn.Linear(in_features=1000, out_features=k * k)   # image content info
         self.S = nn.Linear(in_features=1000, out_features=k * k)    # image color info
-        self.sz = sz
+        self.D_upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        self.S_upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        self.continue_train = continue_train
+        if continue_train:
+            freeze_net = ['self.backbone','self.sNet','self.D','self.D_upsample','self.S','self.S_upsample']
+            for net in freeze_net:
+                for param in eval(net).parameters():
+                    param.requires_grad = False
+            self.backbone.eval()
+            # self.sNet.eval()
 
-    def forward(self, I):
-        I_theta = resize(I, self.sz, interpolation='bilinear')
-        out = self.backbone(self.normalizer(I_theta))
-        d = self.D(out)
-        s = self.S(out)
-        return d, s
 
 
+    def forward(self, org_img,filter_img=None,filter=None):
+        if filter_img is not None:
+            # train
+            bs = org_img.shape[0]
+            out1 = self.backbone(org_img)
+            out2 = self.backbone(filter_img)
+            d1 = self.D(out1).view(bs,1,self.k,self.k)
+            d2 = self.D(out2).view(bs,1,self.k,self.k)
+            s1 = self.S(out1).view(bs,1,self.k,self.k)
+            s2 = self.S(out2).view(bs,1,self.k,self.k)
+            d1 = self.D_upsample(d1)
+            s1 = self.S_upsample(s1)
+            d2 = self.D_upsample(d2)
+            s2 = self.S_upsample(s2)
+            if self.continue_train:
+                # 仅训练一组特定的filter
+                # s1 = s1.mean(dim=0, keepdim=True).repeat(bs, 1,1,1)
+                s2 = s2.mean(dim=0, keepdim=True).repeat(bs, 1,1,1)
+            org_content = self.sNet(org_img, d1)  # 去色的原始图像
+            f_content = self.sNet(filter_img, d2)  # 去色的滤镜图像
+            Y = self.cNet(f_content, s1)  # 去色的滤镜图像+原始图像色彩
+            Y_i = self.cNet(org_content, s2)
+        else:
+            # infer
+            bs = org_img.shape[0]
+            filter = filter.repeat(bs,1,1,1)
+            out1 = self.backbone(org_img)
+            d1 = self.D(out1).view(bs, 1, self.k, self.k)
+            d1 = self.D_upsample(d1)
+            org_content = self.sNet(org_img, d1)  # 去色的原始图像
+            Y = self.cNet(org_content, filter)  # 去色的滤镜图像+原始图像色彩
+            f_content,s1,s2,Y_i = None,None,None,None
 
-# class DNCM(nn.Module):
-#     def __init__(self, feature_dim=256, img_channels=3, img_size=256):
-#         super(DNCM, self).__init__()
-#         self.img_channels = img_channels
-#         self.img_size = img_size
-#
-#         # 扩展特征至空间维度
-#         self.fc = nn.Linear(feature_dim, img_size * img_size)  # 全连接层
-#         # 特征图调整通道数
-#         self.feature_conv = nn.Conv2d(1, img_channels, kernel_size=3, padding=1)
-#         # 融合特征和图像
-#         self.fusion_conv1 = nn.Conv2d(img_channels * 2, img_channels, kernel_size=3, padding=1)
-#         self.fusion_conv2 = nn.Conv2d(img_channels, img_channels, kernel_size=3, padding=1)
-#         # 输出层调整，确保输出与输入图像大小一致
-#         self.output_conv = nn.Conv2d(img_channels, img_channels, kernel_size=3, padding=1)
-#
-#         nn.init.kaiming_uniform_(self.feature_conv.weight, mode='fan_in', nonlinearity='relu')
-#         nn.init.kaiming_uniform_(self.fusion_conv1.weight, mode='fan_in', nonlinearity='relu')
-#         nn.init.kaiming_uniform_(self.fusion_conv2.weight, mode='fan_in', nonlinearity='relu')
-#         nn.init.kaiming_uniform_(self.output_conv.weight, mode='fan_in', nonlinearity='relu')
-#
-#     def forward(self, img, features):
-#         bs = img.shape[0]
-#
-#         # 扩展特征至空间维度并重塑为图像形状
-#         spatial_features = self.fc(features).view(bs, 1, self.img_size, self.img_size)
-#         spatial_features = F.relu(self.feature_conv(spatial_features))
-#
-#         # 将特征图和原图在通道维度上合并
-#         merged = torch.cat([img, spatial_features], dim=1)
-#
-#         # 通过卷积层融合信息
-#         merged = F.relu(self.fusion_conv1(merged))
-#         merged = F.relu(self.fusion_conv2(merged))
-#
-#         # 输出层
-#         output = self.output_conv(merged)
-#         return output
+        return org_content,f_content,s1,s2,Y,Y_i
+
+
 
 
 if __name__ == '__main__':
+    input = torch.rand((4,3,224,224))
+    model = UNet()
+    output = model(input)
 
-    input = torch.rand(24, 3, 256, 256)
-    input2 = torch.rand(24,256)
-    # 1595998208
-    # 1551040512
+    # torch.save(model.state_dict(),'/Users/maoyufeng/Downloads/11.pth')
+    print(output.shape)
 
-    model = DNCM()   # 514523136
-
-    # model = FilterSimulation(training=True)         # 2025848832
-
-    # flops = FlopCountAnalysis(model, (input,1))
-    out = model.forward(input,input2)
-    print(out.shape)
-    # input_image = torch.rand(1, 3, 256, 256)
-    # encoder = Encoder(sz=256,k=16)
-    # content,color= encoder(input_image)
-    # print(color.shape)
-    # print(content.shape)
-
-    # org_tensor = torch.rand((1,3,3,3))
-    # res_tensor = torch.rand((1,3,3,3))
-    #
-    # print(org_tensor)
-    # print(res_tensor)
-    #
-    # for temp in [0.0,0.5,1.0]:
-    #     res = (1-temp)*org_tensor+temp*res_tensor
-    #     print(res)
+    # import cv2
+    # img1= cv2.imread('/Users/maoyufeng/slash/dataset/train_dataset/classic-neg/train/17064945487403_org.jpg')
+    # img2= cv2.imread('/Users/maoyufeng/slash/dataset/train_dataset/classic-neg/train/17064945487403.jpg')
+    # img1 = cv2.cvtColor(img1, cv2.COLOR_BGR2LAB)
+    # img2 = cv2.cvtColor(img2, cv2.COLOR_BGR2LAB)
+    # print(img1)

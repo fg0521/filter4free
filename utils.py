@@ -4,10 +4,13 @@ import random
 import cv2
 import numpy as np
 import torch
-from PIL import Image
+from PIL import Image, ImageEnhance
 import os
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
+from pillow_lut import load_cube_file
+from torchvision import transforms
+from tqdm import tqdm
 
 
 def images2gif(dir, gif_name, resize=(200, 200)):
@@ -166,6 +169,37 @@ def color_shift(image):
     return image
 
 
+def load_luts():
+    img_path = '/data/datasets/mscoco/train2017/'
+    lut_path = '/data/datasets/LUTS/'
+    org_img = os.listdir(img_path)
+    luts = os.listdir(lut_path)
+    for i,img in tqdm(enumerate(org_img)):
+        if img.endswith('.jpg'):
+            lut = random.choice(luts)
+            l = load_cube_file(os.path.join(lut_path,lut))
+            gt = Image.open(os.path.join(img_path,img)).convert("RGB")
+            lut_img = gt.filter(l)
+            if random.random() < 0.5:
+                enhancer = ImageEnhance.Color(lut_img)
+                factor = random.uniform(0.5, 1.5)  # 随机饱和度因子
+                lut_img = enhancer.enhance(factor)
+            if random.random() < 0.5:
+                enhancer = ImageEnhance.Contrast(lut_img)
+                factor = random.uniform(0.5, 1.5)  # 随机对比度因子
+                lut_img = enhancer.enhance(factor)
+            lut_img.save(f"/data/datasets/lut_img/{img.replace('.jpg','_lut.jpg')}",quality=100)
+
+def to_pil( tensor):
+    unnormalize = transforms.Normalize(
+            mean=[-2.12, -2.04, -1.80],
+            std=[4.36, 4.46, 4.44]
+        )
+    tensor = unnormalize(tensor)
+    tensor = torch.clamp(tensor, 0, 1)
+    return transforms.ToPILImage()(tensor)
+
+
 if __name__ == '__main__':
     # images2gif(dir='test/canon',
     #            gif_name='canon')
@@ -191,5 +225,7 @@ if __name__ == '__main__':
     # im3 = Image.open('/Users/maoyufeng/slash/dataset/富士/nc/test/DSCF0268.JPG')
     # res = image_concat(img_list=[im1,im2,im3])
     # res.save('/Users/maoyufeng/slash/dataset/富士/nc/test/res4.jpg',quality=100)
-    image = cv2.imread('/Users/maoyufeng/Downloads/iShot_2024-02-05_16.12.24.png')
-    add_frame(image=image)
+    # image = cv2.imread('/Users/maoyufeng/Downloads/iShot_2024-02-05_16.12.24.png')
+    # add_frame(image=image)
+
+    load_luts()

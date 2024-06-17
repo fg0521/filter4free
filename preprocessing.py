@@ -8,8 +8,8 @@ import cv2
 import numpy as np
 import torch
 from tqdm import tqdm
-from image_align.superpoint import SuperPoint
-from image_align.matching import add_align
+# from image_align.superpoint import SuperPoint
+# from image_align.matching import add_align
 
 def laplacian(img, size=1):
     kernel = np.array([[-1, -1, -1], [-1, size + 8, -1], [-1, -1, -1]])
@@ -40,11 +40,11 @@ class Processor():
         else:
             self.device = torch.device('cpu')
 
-        if align_size >0:
-            self.super_point = SuperPoint()
-            self.super_point.load_state_dict(torch.load('image_align/checkpoints/superpoint_pytorch.pth', map_location=self.device))
-            self.super_point.eval()
-            self.super_point = self.super_point.to(self.device)
+        # if align_size >0:
+        #     self.super_point = SuperPoint()
+        #     self.super_point.load_state_dict(torch.load('image_align/checkpoints/superpoint_pytorch.pth', map_location=self.device))
+        #     self.super_point.eval()
+        #     self.super_point = self.super_point.to(self.device)
 
 
 
@@ -162,8 +162,8 @@ class Processor():
                         if align and self.align_size>0:
                             org_im_cp = org_im[self.align_size:org_im.shape[0] - self.align_size, self.align_size:org_im.shape[1] - self.align_size, :]
                             # 替换更好的图像对齐算法
-                            # org_im = self.add_align(org_img=org_im, goal_img=goal_im)
-                            org_im = add_align(model=self.super_point,device=self.device,org_img=org_im, goal_img=goal_im)
+                            org_im = self.add_align(org_img=org_im, goal_img=goal_im)
+                            # org_im = add_align(model=self.super_point,device=self.device,org_img=org_im, goal_img=goal_im)
 
                             org_im = org_im[self.align_size:org_im.shape[0] - self.align_size, self.align_size:org_im.shape[1] - self.align_size, :]
                             goal_im = goal_im[self.align_size:goal_im.shape[0] - self.align_size, self.align_size:goal_im.shape[1] - self.align_size, :]
@@ -261,7 +261,7 @@ class Processor():
 
 
 if __name__ == '__main__':
-    p = Processor(mode='order', clip_size=1000,align_size=0)
-    p.run(input_path=f'/Users/maoyufeng/slash/dataset/org_dataset/velvia',
-          output_path=f'/Users/maoyufeng/slash/dataset/train_dataset/velvia2',
-          min_byte=200.0, concat=False, clip=True, align=False, sharpen=False)
+    p = Processor(mode='order', clip_size=700,align_size=30)
+    p.run(input_path=f'/Users/maoyufeng/Downloads/色罩4',
+          output_path=f'/Users/maoyufeng/Downloads/色罩2',
+          min_byte=80.0, concat=False, clip=True, align=False, sharpen=False)

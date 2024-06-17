@@ -4,11 +4,14 @@
 使用`神经网络`拟合各种`相机滤镜`、`胶片色彩`！后续会`一直更新迭代`下去，欢迎关注，欢迎右上角点一下`Started`☆！这会有很大的帮助，谢谢！也欢迎白嫖！
 
 #### 2.目录
-- `images`：用于测试的图片路径（不重要
-- `test`：记录图片训练过程变化-gif（不重要
-- `static`：权重文件和GUI资源文件
-- `pack`：Nuitka打包文件
+- `【dir】static`：权重文件和GUI资源文件
+  - `checkpoints`：权重文件
+  - `src`：资源文件
+- `【dir】idea`：理论研究
+  - `src`：资源文件
+- `【dir】pack`：Nuitka打包文件
 - `train.py`：训练脚本
+- `train_new.py`：新的训练脚本
 - `dataset.py`：数据构造
 - `gui.py`：pyqt界面
 - `infer.py`：推理脚本
@@ -38,7 +41,7 @@
 7. `NOSTALGIC Neg.`：**static/checkpoints/fuji/nostalgic-neg/best.pth** ✅
 8. `PRO Neg.Std` ：❎
 9. `ASTIA `：❎
-10. `PROVIA`：❎
+10. `PROVIA`：**static/checkpoints/fuji/provia/best.pth** ✅
 11. `VELVIA`：**static/checkpoints/fuji/velvia/best.pth** ✅
 12. `Pro 400H`：**static/checkpoints/fuji/pro400h/best.pth** ✅
 13. `Superia 400`：**static/checkpoints/fuji/superia400/best.pth** ✅
@@ -75,6 +78,14 @@
 
 ###### 哈苏色彩模拟
 
+<center><h6>模型对应权重文件</h6></center>
+
+| Model            | Checkpoint   |
+| ---------------- | ------------ |
+| FilterSimulation | best-v4      |
+| UNet             | best.pth     |
+| UCM              | best-ucm.pth |
+
 #### 4.使用方法
 ###### Pycharm等解释器（适用于所有平台）
 
@@ -100,11 +111,15 @@
 
 ###### GUI介绍
 
-![](comment.jpg)
+![](src/comment.jpg)
 
 #### 实验记录
 
-参考`对比实验.pdf`
+1.参考`idea/对比实验.md`，框架如下：
+![](idea/src/模型架构.png)
+
+2.参考`idea/自适应图像色彩迁移方案.md`，框架如下：
+![](idea/src/model.png)
 
 #### 用户提问★★★★★
 
@@ -126,9 +141,9 @@
 
 #### TODO
 
-1.收集相关图像数据训练更多类型胶片模拟
+1.收集相关图像数据训练更多类型胶片模拟 ❎
 
-2.尝试统一所有设备（iphone/安卓/佳能/尼康等相机）到胶片模拟的映射
+2.尝试统一所有设备（iphone/安卓/佳能/尼康等相机）到胶片模拟的映射 ✅
 
 #### Update
 1. 【24.01.21|Beta1.0】
@@ -139,3 +154,5 @@
 - 新增`保存路径提示弹窗`
 - 修复png图像加载出错问题，图像格式为`opencv`所支持的图像类型
 - 修复图像加载显示问题，保留`原始图像比例`进行`自适应填充`
+3. 【24.06.14】
+- 新研究了一种统一的色彩模拟方案，包括`去色`和`上色`两个阶段，详情参考`idea/自适应图像色彩迁移方案.md`
