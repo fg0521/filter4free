@@ -29,7 +29,7 @@ zstandard==0.22.0
 
 ###### 打包命令：
 
-```python
+```shell
 python -m nuitka \
           --standalone \
           --onefile\
@@ -37,11 +37,11 @@ python -m nuitka \
           --macos-create-app-bundle\
           --output-dir=build\
           --assume-yes-for-download\
-          --macos-app-version=1.0\
+          --macos-app-version=2.0\
           --disable-console\
           --include-data-dir=./static/=./static/\
 					--macos-app-icon=./app.icns\
-          FilterSimulation.py
+					--include-data-files=./model.py=./model.py FilterSimulation.py
 ```
 
 注意：

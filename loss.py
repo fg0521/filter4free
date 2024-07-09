@@ -3,7 +3,24 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import cv2
+from torchvision import models
 
+class PerceptualLoss(nn.Module):
+    def __init__(self):
+        super(PerceptualLoss, self).__init__()
+        vgg = models.vgg16(pretrained=True).features
+        self.slice1 = nn.Sequential()
+        for x in range(15):  # 取VGG的前5层
+            self.slice1.add_module(str(x), vgg[x])
+        self.slice1.eval()  # 设置为评估模式
+        for param in self.slice1.parameters():
+            param.requires_grad = False
+
+    def forward(self, x, y):
+        x_vgg = self.slice1(x)
+        y_vgg = self.slice1(y)
+        loss = F.mse_loss(x_vgg, y_vgg)  # 使用均方误差计算损失
+        return loss
 
 class ChiSquareLoss(nn.Module):
     """
@@ -136,66 +153,39 @@ class RGBLoss(nn.Module):
         self.eps = 1e-4
 
     def forward(self,x1,x2):
-        #b,c,h,w = x.shape
-        batch = x1.shape[0]
-        loss = 0
-        k_list =[]
-        for x in [x1,x2]:
-            mean_rgb = torch.mean(x,[2,3],keepdim=True)
-            mr,mg, mb = torch.split(mean_rgb, 1, dim=1)
-            Drg = torch.pow(mr-mg,2)
-            Drb = torch.pow(mr-mb,2)
-            Dgb = torch.pow(mb-mg,2)
-            k = torch.pow(torch.pow(Drg,2) + torch.pow(Drb,2) + torch.pow(Dgb,2) + self.eps,0.5)
-            k = k.reshape(batch)
-            k_list.append(k)
-        for i in range(0, batch):
-            loss += torch.sum(torch.abs(k_list[0][i]-k_list[1][i]))
-        loss /= batch
+        rgb1 = torch.mean(x1,[2,3],keepdim=True)
+        rgb2 = torch.mean(x2,[2,3],keepdim=True)
+        Drg1,Drb1,Dgb1 = torch.pow(rgb1[:,0] - rgb1[:,1], 2),torch.pow(rgb1[:,1] - rgb1[:,2], 2),torch.pow(rgb1[:,2] - rgb1[:,0], 2)
+        Drg2,Drb2,Dgb2 = torch.pow(rgb2[:,0] - rgb2[:,1], 2),torch.pow(rgb2[:,1] - rgb2[:,2], 2),torch.pow(rgb2[:,2] - rgb2[:,0], 2)
+        k1 = torch.pow(torch.pow(Drg1, 2) + torch.pow(Drb1, 2) + torch.pow(Dgb1, 2) + self.eps, 0.5).squeeze()
+        k2 = torch.pow(torch.pow(Drg2, 2) + torch.pow(Drb2, 2) + torch.pow(Dgb2, 2) + self.eps, 0.5).squeeze()
+        loss = torch.mean(torch.abs(k1-k2))
+
         return loss
 
 
 
+class EDMLoss(nn.Module):
+    def __init__(self):
+        super(EDMLoss, self).__init__()
 
+    def forward(self, p_target, p_estimate):
+        assert p_target.shape == p_estimate.shape
+        cdf_target = torch.cumsum(p_target, dim=1)
+        cdf_estimate = torch.cumsum(p_estimate, dim=1)
+
+        cdf_diff = cdf_estimate - cdf_target
+        samplewise_emd = torch.sqrt(torch.mean(torch.pow(torch.abs(cdf_diff), 2)))  # train
+        # samplewise_emd = torch.mean(torch.pow(torch.abs(cdf_diff), 1)) # test
+
+        return samplewise_emd.mean()
 
 
 if __name__ == '__main__':
-    # img = transform(Image.open('/Users/maoyufeng/Downloads/iShot_2023-12-05_11.40.09.jpg'))
-    # hist_channel = torch.histc(img[:, :, :] * 255, bins=256, min=0, max=255)
-    # print(hist_channel)
-    # hist, bin_edges = np.histogram(img[:, :, :] * 255, bins=256, range=(0,255))
-    # print(torch.from_numpy(hist).float())
-    # im1 = cv2.imread('/Users/maoyufeng/Library/Mobile Documents/com~apple~CloudDocs/实验/img/1_real.jpg')
-    # im2 = cv2.imread('/Users/maoyufeng/Library/Mobile Documents/com~apple~CloudDocs/实验/img/1_rgb.jpg')
-    # im1 = torch.from_numpy(im1).permute(2, 0, 1).unsqueeze(0).to(torch.float32)/ 255.0
-    # im2 = torch.from_numpy(im2).permute(2, 0, 1).unsqueeze(0).to(torch.float32)/ 255.0
-    # # im1 = torch.rand((4,3,224,224))
-    # # im2 = torch.rand((4,3,224,224))
-    # loss = RGBLoss2()
-    # print(loss(torch.cat([im1,im1,im1,im1]),torch.cat([im2,im2,im2,im2])))
+    torch.manual_seed(255)
+    im1 = torch.rand((4,3,224,224))
+    im2 = torch.rand((4,3,224,224))
+    loss = RGBLoss()
+    print(loss(im1,im2))
 
-    image1 = cv2.imread('/Users/maoyufeng/Downloads/filter-test/velvia/DSCF3575.jpg')  # 加载图像1
-    image2 = cv2.imread('/Users/maoyufeng/Downloads/232133.jpg')  # 加载图像2
-    image3 = cv2.imread('/Users/maoyufeng/Downloads/23213345.jpg')  # 加载图像2
-    image1 = cv2.resize(image1,(image2.shape[1],image2.shape[0]))
-
-
-
-    # 将图像转换为PyTorch张量，并确保它们的形状是相同的
-    image1_tensor = torch.tensor(image1, dtype=torch.float32)
-    image2_tensor = torch.tensor(image2, dtype=torch.float32)
-    image3_tensor = torch.tensor(image3, dtype=torch.float32)
-    # 获取图像的高度和宽度
-    # height, width,_ = image1_tensor.shape
-    # 计算每个像素上的L1 loss
-
-
-    # losses = torch.sum(torch.abs(image1_tensor - image2_tensor))
-    # print(losses)
-    # losses = torch.sum(torch.abs(image1_tensor - image3_tensor))
-    # print(losses)
-    loss = F.l1_loss(image1_tensor, image2_tensor)
-    print(f'Filter Small: {loss}')
-    loss = F.l1_loss(image1_tensor, image3_tensor)
-    print(f'Filter  Base: {loss}')
 

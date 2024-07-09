@@ -1,6 +1,6 @@
 import gradio as gr
 from tqdm import tqdm
-from models import FilterSimulation
+from models import FilterSimulation4
 from infer import image2block
 import torch
 from PIL import Image
@@ -31,7 +31,7 @@ def inference(img, filter_name, batch=8, patch_size=640, padding=16):
     device = torch.device('mps')
     pth = torch.load(pth_dict[filter_name], map_location=device)
     channel = pth['decoder.4.bias'].shape[0]
-    model = FilterSimulation(channel=channel)
+    model = FilterSimulation4(channel=channel)
     model.load_state_dict(pth, strict=False)
     model.to(device)
     model.eval()

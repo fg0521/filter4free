@@ -1,8 +1,12 @@
+import os.path
+import cv2
 import torch
 import coremltools as ct
-from PIL import Image
+from PIL import Image, ImageOps
+from torchvision import transforms
+from tqdm import tqdm
 
-from models import FilterSimulation, FilterSimulationFast, FilterSimulationConvert
+from models import FilterSimulation2iPhone,UNet
 import torch
 import random
 import numpy as np
@@ -13,92 +17,116 @@ random.seed(0)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-def convert(pytorch_model,save_path='YourModelName'):
+import subprocess
+
+
+
+
+def convert(pytorch_model,model_name,size=640,image=None):
     """
     mlprogram: .mlpackage
     neuralnetwork: .mlmodel
+    run `xcrun coremlcompiler compile YourModel.mlmodel ./` to convert .mlmodelc
     """
     pytorch_model.eval()
-    example_input = torch.rand(1, 3, 224, 224)
-    temp = torch.Tensor([1.0])
-    traced_model = torch.jit.trace(pytorch_model, (example_input,temp))
+    trace_input = torch.rand(size=(1,3,size,size))
+    # 追踪模型
+    traced_model = torch.jit.trace(pytorch_model, trace_input)
+
+    # 转换为 Core ML 模型
     model = ct.convert(
         traced_model,
         convert_to="neuralnetwork",
-        # inputs=[ct.TensorType(name="input", shape=(1, 3, 256, 256))],
-        inputs=[ct.TensorType(name="input", shape=(ct.RangeDim(1, 4), 3, ct.RangeDim(224, 1024), ct.RangeDim(224, 1024))),
-                ct.TensorType(name="temp",shape=(1,))],
-        outputs=[ct.TensorType(name="output")]
+        source='pytorch',
+        inputs=[ct.ImageType(name="input",
+                             shape=trace_input.shape,
+                             channel_first=True,
+                             color_layout=ct.colorlayout.RGB,
+                             scale=1 / (255.0),
+                             )]
+                ,
+        outputs=[ct.TensorType(name="output")],
     )
+    model.author = 'Slash'
+    model.version = '1.0'
+    model.short_description = 'use neural network to fit camera color.'
+    model_name = model_name + '.mlmodel'
+    model.save(f"./mlmodel/{model_name}")
+
+    # 输入一张图像用于验证模型
+    if image is not None:
+        img = cv2.imread(image)
+        img = Image.fromarray(img).convert("RGB").resize((size, size))
+        # ML模型
+        ml_res = model.predict({"input": img})['output']
+        # 使用 PyTorch 模型进行预测
+        pytorch_input = transforms.ToTensor()(img).unsqueeze(0)  # 转换为张量并增加批次维度
+        with torch.no_grad():
+            pt_res = pytorch_model(pytorch_input).detach().cpu().numpy()
+        print(f"模型验证:{np.allclose(ml_res,pt_res,1e-2)}")
+
+    try:
+        subprocess.run(['xcrun', 'coremlcompiler', 'compile', f"./mlmodel/{model_name}", './mlmodel/'], capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        print("Command failed with return code", e.returncode)
+        print("Output:\n", e.output)
+
+def predict(patch_size=624,padding=8):
+    model = ct.models.MLModel('./mlmodel/CC.mlmodel')
+    image = cv2.imread('/Users/maoyufeng/Downloads/63537EC1-9154-42B6-BE60-BC3C8DA6DFA1.jpeg')
+    image = Image.fromarray(image).convert('RGB')
+    W,H = image.size
+    right_padding = padding if W % patch_size == 0 else padding + patch_size - (W % patch_size)
+    bottom_padding = padding if H % patch_size == 0 else padding + patch_size - (H % patch_size)
+
+    image = ImageOps.expand(image, border=(padding, padding, right_padding, bottom_padding), fill='white')
+    # image = image.resize((W+right_padding+padding, H+bottom_padding+padding))
+    new_w,new_h = image.size
+    # output = Image.new('RGB', (new_w,new_h), color='white')
+    output= np.empty(shape=(3,new_h,new_w))
 
 
-    model.save(f"./{save_path}")
-    # 打印模型的每一层的名称
-    for layer in model.get_spec().neuralNetwork.layers:
-        print(layer.name)
+    row = (image.size[1] - 2 * padding) // patch_size
+    col = (image.size[0] - 2 * padding) // patch_size
+    # 从左到右 从上到下
+    patches = []
+    for y1 in range(padding, row * patch_size, patch_size):
+        for x1 in range(padding, col * patch_size, patch_size):
+            patches.append(image.crop((x1 - padding,y1 - padding,x1 + patch_size + padding,y1 + patch_size + padding)))
 
-def predict():
-    model = ct.models.MLModel('mlmodel/NC.mlmodel')
-    image = Image.open('/Users/maoyufeng/Downloads/iShot_2024-03-18_11.08.35.jpg')
-    # image = image.resize((400, 400))
-    # 将图像转换为numpy数组并确保它是float32类型
-    image_array = np.array(image).astype('float32')
-    temp = torch.Tensor([0])
-    # 归一化图像数据到0-1之间（如果需要）
-    image_array /= 255.0
-    image_array = np.transpose(image_array, (2, 0, 1))
-    image_array = np.expand_dims(image_array, axis=0)
+    for i in tqdm(range(len(patches))):
+        out = model.predict({"input":patches[i]})['output'][0]
+        out = out[ :, padding:-padding, padding:-padding]
+        y = i // col * patch_size
+        x = i % col * patch_size
+        output[:,y:y+patch_size, x:x+patch_size] = out
 
-    image_array = torch.rand((1, 3, 224, 300)).numpy()
-    output = model.predict({"input":image_array,"temp":temp})
-    output_image_array = output['output'].squeeze(0)  # 假设批量大小为1
-    # 如果模型输出是CHW格式，需要转换为HWC格式
-    if output_image_array.shape[0] < output_image_array.shape[1]:  # C < H，意味着是CHW格式
-        output_image_array = np.transpose(output_image_array, (1, 2, 0))
-    # 将数据范围从[0, 1]映射回[0, 255]
-    output_image_array = (output_image_array * 255).astype(np.uint8)
-    # 创建PIL.Image对象
-    output_image = Image.fromarray(output_image_array)
-    # 如果需要，可以显示图像
-    output_image.show()
-    output_image.save('/Users/maoyufeng/Downloads/input13.jpg')
+    output = output[:,:H,:W]
+    output =  np.clip(output*255,a_min=0,a_max=255).astype(np.uint8)
+    output = output.transpose((1,2,0))
+    cv2.imwrite('/Users/maoyufeng/Downloads/1111/test.jpg',output,[cv2.IMWRITE_JPEG_QUALITY, 100])
+
 
 
 if __name__ == '__main__':
-    # # 移除dropout层
-    torch_model = FilterSimulationConvert()
-    torch_model.load_state_dict(torch.load('static/checkpoints/fuji/velvia/best.pth',map_location='cpu'))
-    convert(pytorch_model=torch_model,save_path="./mlmodel/Velvia.mlmodel")
+    # torch_model = FilterSimulation2iPhone()
+    # path = '/Users/maoyufeng/slash/project/github/filter4free/static/checkpoints'
+    # name2pth = {
+    #     'CC':'fuji/classic-chrome/best-v4.pth',
+    #     'NC':'fuji/classic-neg/best-v4.pth',
+    #     'NN':'fuji/nostalgic-neg/best-v4.pth',
+    #     'Provia':'fuji/provia/best-v4.pth',
+    #     'Velvia':'fuji/velvia/best-v4.pth',
+    #     'Superia400':'fuji/superia400/best-v4.pth',
+    #     'Pro400H':'fuji/pro400h/best-v4.pth',
+    #     'ColorPlus':'kodak/colorplus/best-v4.pth',
+    #     'Gold200':'kodak/gold200/best-v4.pth',
+    #     'Portra400':'kodak/portra400/best-v4.pth',
+    #     'Ultramax400':'kodak/ultramax400/best-v4.pth'
+    # }
+    # for name,pth in name2pth.items():
+    #     torch_model.load_state_dict(torch.load(os.path.join(path,pth),map_location='cpu'))
+    #     convert(pytorch_model=torch_model,model_name=name)
+    #     print(f"Convert Model {name} Successfully...")
 
-    # predict()
-
-    # import coremltools
-    # from coremltools.proto import Model_pb2
-    #
-    # # 加载原始Core ML模型
-    # model_path = 'mlmodel/NN.mlmodel'  # 替换为你的模型文件路径
-    # model = coremltools.models.MLModel(model_path)
-    #
-    # # 获取模型的规范并升级其版本到7
-    # spec = model.get_spec()
-    # spec.specificationVersion = 7
-    #
-    # # 设置模型的输入和输出类型为FP16
-    # for input in spec.description.input:
-    #     if input.type.WhichOneof('Type') == 'multiArrayType':
-    #         input.type.multiArrayType.dataType = coremltools.proto.FeatureTypes_pb2.ArrayFeatureType.FLOAT16
-    #
-    # for output in spec.description.output:
-    #     if output.type.WhichOneof('Type') == 'multiArrayType':
-    #         output.type.multiArrayType.dataType = coremltools.proto.FeatureTypes_pb2.ArrayFeatureType.FLOAT16
-    #
-    # # 更新模型规范
-    # model = coremltools.models.MLModel(spec)
-    #
-    # # 量化模型为FP16（如果需要）
-    # quantized_model = coremltools.models.neural_network.quantization_utils.quantize_weights(model, nbits=16)
-    #
-    # # 保存更新后的模型
-    # quantized_model.save('mlmodel/NN_quant.mlmodel')
-
-
+    predict()

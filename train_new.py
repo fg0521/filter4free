@@ -93,6 +93,7 @@ def train(train_dataloader,val_dataloader, num_epochs, learning_rate, device,
     l1_loss = torch.nn.L1Loss()
     l2_loss = torch.nn.MSELoss()
     rgb_loss = RGBLoss()
+    step = 0
     for epoch in range(num_epochs):
         model.train()
         for img1, img2 in tqdm(train_dataloader,desc=f"Epoch:{epoch+1}"):
@@ -110,7 +111,11 @@ def train(train_dataloader,val_dataloader, num_epochs, learning_rate, device,
                 'rgb_loss': color_loss.item(),
                 "consistency_loss":consistency_loss.item(),
             }
-
+            step+=1
+            if step%100==0:
+                visualize(img1, img2, Y, Y_i, org_content, f_content)
+            else:
+                wandb.log({})
             loss = reconstruction_loss + 10 * consistency_loss + color_loss
             wandb.log(msg, commit=False)
             loss.backward()
@@ -330,24 +335,28 @@ def inference(model,filter,image,patch_size=240, batch=8,padding=8):
 
 if __name__ == '__main__':
 
-    model = UCM(continue_train=True)
+    model = UCM()
     img_train,img_val = [],[]
-    train_path = '/Users/maoyufeng/slash/dataset/train_dataset/classic-neg/train'
-    val_path = '/Users/maoyufeng/slash/dataset/train_dataset/classic-neg/val'
-    for im in os.listdir(train_path):
-        if im.endswith('_org.jpg'):
-            img_train.append((os.path.join(train_path, im),
-                              os.path.join(train_path, im.replace("_org", ""))))
 
-    for im in os.listdir(val_path):
-        if im.endswith('_org.jpg'):
-            img_val.append((os.path.join(val_path, im),
-                            os.path.join(val_path, im.replace("_org", ""))))
+    for name in ['provia', 'velvia', 'superia400', 'pro400h', 'classic-chrome', 'classic-neg', 'nostalgic-neg',
+                'gold200', 'ultramax400', 'portra400', 'portra160nc', 'colorplus', 'om-vivid']:
+        # train_path = '/Users/maoyufeng/slash/dataset/train_dataset/classic-neg/train'
+        # val_path = '/Users/maoyufeng/slash/dataset/train_dataset/classic-neg/val'
+        train_path = f'/home/dlwork01/slash/{name}/train'
+        val_path = f'/home/dlwork01/slash/{name}/val'
+        for im in os.listdir(train_path):
+            if im.endswith('_org.jpg'):
+                img_train.append((os.path.join(train_path, im),
+                                  os.path.join(train_path, im.replace("_org", ""))))
+        for im in os.listdir(val_path):
+            if im.endswith('_org.jpg'):
+                img_val.append((os.path.join(val_path, im),
+                                os.path.join(val_path, im.replace("_org", ""))))
 
     train_dataset = ColorTransferDataset(img_train)
     val_dataset = ColorTransferDataset(img_val)
-    train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=8, shuffle=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=16, shuffle=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=16, shuffle=True)
 
     if torch.cuda.is_available():
         device = torch.device('cuda:1')
@@ -361,20 +370,9 @@ if __name__ == '__main__':
         resume=False,
     )
     model.load_state_dict(torch.load('pretrained_model.pth',map_location=device))
-    # train(train_dataloader, val_dataloader,num_epochs=32, learning_rate=3e-4, device=device,
-    #       save_path='./test_checkpoint')
+    train(train_dataloader, val_dataloader,num_epochs=35, learning_rate=2e-4, device=device,
+          save_path='./test_checkpoint')
 
-    train_on_one(train_dataloader, val_dataloader, num_epochs=200, learning_rate=1e-4,
-                 device=device, save_path='./test_checkpoint2')
+    # train_on_one(train_dataloader, val_dataloader, num_epochs=200, learning_rate=1e-4,
+    #              device=device, save_path='./test_checkpoint2')
 
-
-
-    pth = torch.load('test_checkpoint2/filter_loss_0.1902.pth',map_location=device)
-    filter_vec = pth['filter']
-    model.sNet.load_state_dict(pth['sNet'])
-    model.cNet.load_state_dict(pth['cNet'])
-    model.to(device)
-    model.eval()
-    st = time.time()
-    inference(model,filter_vec,'')
-    print(time.time()-st)

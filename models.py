@@ -28,6 +28,7 @@ class FilterSimulation1(nn.Module):
     """
     def __init__(self, channel=3,training=False):
         super(FilterSimulation1, self).__init__()
+        self.name = 'FilterSimulation1'
         self.encoder = nn.Sequential(
             nn.Conv2d(channel, 32, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
@@ -65,6 +66,7 @@ class FilterSimulation2(nn.Module):
     注：解决棋盘效应，考虑压缩模型大小
     """
     def __init__(self, channel=3,training=False):
+        self.name = 'FilterSimulation2'
         super(FilterSimulation2, self).__init__()
         self.encoder = nn.Sequential(
             nn.Conv2d(channel, 32, kernel_size=3, padding=1),
@@ -107,6 +109,7 @@ class FilterSimulation3(nn.Module):
     """
     def __init__(self, channel=3,training=False):
         super(FilterSimulation3, self).__init__()
+        self.name = 'FilterSimulation3'
         self.encoder = nn.Sequential(
             nn.Conv2d(channel, channel, kernel_size=3, padding=1, groups=channel),
             nn.Conv2d(channel, 32, kernel_size=1),
@@ -144,6 +147,7 @@ class FilterSimulation3(nn.Module):
 class FilterSimulation4(nn.Module):
     def __init__(self, training=False, channel=3):
         super(FilterSimulation4, self).__init__()
+        self.name = 'FilterSimulation4'
         self.encoder = nn.Sequential(
             nn.Conv2d(channel, 32, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
@@ -182,7 +186,44 @@ class FilterSimulation4(nn.Module):
         x2 = (1.0 - temp) * x + temp * x2
         return x2
 
+class FilterSimulation2iPhone(nn.Module):
+    def __init__(self,channel=3):
+        super(FilterSimulation2iPhone, self).__init__()
+        self.name = 'FilterSimulation4'
+        self.encoder = nn.Sequential(
+            nn.Conv2d(channel, 32, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            PConv2d(32),
+            nn.ReLU(inplace=True),
+            nn.AvgPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            PConv2d(64),
+            nn.ReLU(inplace=True),
+        )
 
+        self.decoder = nn.Sequential(
+            nn.Conv2d(64, 32, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            PConv2d(32),
+            nn.ReLU(inplace=True),
+        )
+        self.final_conv = nn.Conv2d(32,3,kernel_size=3,padding=1)
+        # mean = [0.485, 0.456, 0.406]
+        # std = [0.229, 0.224, 0.225]
+        # self.norm = transforms.Normalize(mean=mean, std=std)
+        # self.unnorm = transforms.Normalize(mean=[-m/s for m, s in zip(mean, std)],std=[1/s for s in std])
+
+    def forward(self, x):
+        # 编码器
+        # x = self.norm(x)
+        x1 = self.encoder(x)
+        # 解码器
+        x2 = self.decoder(x1)
+        x2 = F.interpolate(x2, mode='bilinear', scale_factor=2, align_corners=False)
+        x2 = self.final_conv(x2)
+        # x2 = self.unnorm(x2)
+        return x2
 
 class DoubleConv(nn.Module):
     """(convolution => [BN] => ReLU) * 2"""
@@ -237,6 +278,7 @@ class Up(nn.Module):
 class UNet(nn.Module):
     def __init__(self, channel=3):
         super(UNet, self).__init__()
+        self.name = 'UNet'
         self.inc = (DoubleConv(channel, 32))
         self.down1 = (Down(32, 64))
         self.down2 = (Down(64, 128))

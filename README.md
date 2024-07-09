@@ -104,6 +104,7 @@
 1. `Apple Silicon`链接(M1/M2/m3)
 - 【V1.0】链接: https://pan.baidu.com/s/1N5ux3eSUgYQTSB30iFw1GQ 提取码: nck8 
 - 【V1.1】链接: https://pan.baidu.com/s/1rnI5xPbwTkuZmetiWv0_6A 提取码: trbp 
+- 【V1.2】链接: https://pan.baidu.com/s/15v0pnFeGRMfCcVX5FE53_A 提取码: vp2x
 2. `Intel`链接(i5/i7/i9)
 - 【V1.0】链接: https://pan.baidu.com/s/14afbEXX_C4F7b-OeFHXRQg 提取码: mjc7 
 - 【V1.1】链接: https://pan.baidu.com/s/1SmBLFE7MT4KwxzbSzpJGYA 提取码: nbue 
@@ -128,15 +129,13 @@
   2. 打开 “终端的完全磁盘访问” 权限。`【系统设置】` ▸ `【隐私与安全性】` ▸ `【完整磁盘访问权限】` 勾选了`【终端】` （如果之前勾选过-然后+）
   3. 打开`【系统设置】`▸`【隐私与安全性】`▸`【安全性】`板块下，不明身份的开发者 点下方的`【仍要打开】`
   4. 先把app放到`【应用程序】`再在`【终端】`执行`sudo xattr -rd com.apple.quarantine 你的app路径`，例如：`sudo xattr -rd com.apple.quarantine /Applications/FilterSimulation.app`
-
 -  MacOS M系列出现`闪退`
   
   1. 可以在terminal中使用`open AIFilter.app` 命令打开或`右键显示包内容`▸`Contents`▸`MacOS`▸`AIFilter`▸`右键在终端中打开`
   2. 安装`command-line-tools`：在`【终端】`中运行`xcode-select --install`命令进行安装，安装完成后输入`sudo codesign --force --deep --sign - 你的app路径` ，例如：`sudo codesign --force --deep --sign -  /Applications/FilterSimulation.app`
-  
 -  其他相机/手机使用后是否存在偏差
-
-  
+- 关于运行源码问题
+  1. M系列芯片在运行`gui.py`时候，可能出现`PyQt5`的安装问题，由于目前`该库不支持使用pip安装`，需要使用`berw`安装，再将这个库拖入到自己的`site_packages`中。自行百度解决or参照：https://blog.csdn.net/WHUGIS1805/article/details/129702200
 
 
 #### TODO
@@ -156,3 +155,5 @@
 - 修复图像加载显示问题，保留`原始图像比例`进行`自适应填充`
 3. 【24.06.14】
 - 新研究了一种统一的色彩模拟方案，包括`去色`和`上色`两个阶段，详情参考`idea/自适应图像色彩迁移方案.md`
+3. 【24.07.4】
+- 新增provia滤镜，支持点击/拖拽上传图像，支持模型切换

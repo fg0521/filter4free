@@ -9,18 +9,18 @@ from PIL import Image
 from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-from dataset import MaskDataset, transform, Compose, ToTensor, RandomCropThreeInstances, \
-    RandomHorizontalFlipThreeInstances
+from dataset import MaskDataset
 from torchvision import transforms
 import torch.nn as nn
 
 from infer import image2block
 from loss import RGBLoss, EDMLoss, PerceptualLoss
-from models import FilterSimulation, FilterSimulation3, UNet, FilterSimulation4, FilterSimulation4L
+from models import FilterSimulation3,  FilterSimulation4
 import numpy as np
 import matplotlib.pyplot as plt
 # from infer import image2block
 import wandb
+from test import UNet, UNetStudent
 
 seed = 3407
 torch.manual_seed(seed)
@@ -239,12 +239,14 @@ class Trainer:
 
 
 if __name__ == '__main__':
+
+
     trainer = Trainer(data_path='/Users/maoyufeng/slash/dataset/train_dataset/polaroid',
-                      model=UNet(),
-                      save_model_path='static/checkpoints/polaroid',
+                      model=UNetStudent(),
+                      save_model_path='/Users/maoyufeng/Downloads/polaroid2',
                       pretrained_model_path='',
                       channel='rgb')
-    trainer.train(epoch_num=500, lr=1e-4, batch_size=8, eval_step=1, early_stop_step=20)
+    trainer.train(epoch_num=500, lr=1e-3, batch_size=8, eval_step=1, early_stop_step=20)
 
 
     # trainer = Trainer2()

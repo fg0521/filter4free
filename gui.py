@@ -6,12 +6,65 @@ import cv2
 import numpy as np
 import torch
 from PyQt5.QtWidgets import QMainWindow, QButtonGroup, \
-    QScrollArea, QPushButton, QLabel, QMessageBox, QApplication, QWidget, QHBoxLayout, QVBoxLayout, QSlider
+    QScrollArea, QPushButton, QLabel, QMessageBox, QApplication, QWidget, QHBoxLayout, QVBoxLayout, QSlider, QComboBox, \
+    QFileDialog
 from PyQt5.QtCore import pyqtSignal, QObject, QThread, pyqtProperty, QSize, Qt, QRectF, QEvent
-from infer import image2block, infer
-from models import UNet
+from models import UNet, FilterSimulation4
 from PyQt5.QtGui import QColor, QPainter, QFont, QPixmap, QImage
+import torch.nn.functional as F
+
 file_path = os.path.dirname(__file__)
+
+
+def image2block(image, patch_size=448, padding=16):
+    patches = []
+    # 转换为tensor
+    image = image / 255.0
+    mean = np.array([0.485, 0.456, 0.406])
+    std = np.array([0.229, 0.224, 0.225])
+    image = (image - mean) / std  # 归一化
+    image = torch.from_numpy(image).float()
+    image = image.permute(2, 0, 1)  # c h w
+
+    _, H, W = image.shape
+    # 上侧、左侧填充padding  右侧和下侧需要计算
+    right_padding = padding if W % patch_size == 0 else padding + patch_size - (W % patch_size)
+    bottom_padding = padding if H % patch_size == 0 else padding + patch_size - (H % patch_size)
+    image = F.pad(image, (padding, right_padding, padding, bottom_padding), mode='replicate')
+    row = (image.shape[1] - 2 * padding) // patch_size
+    col = (image.shape[2] - 2 * padding) // patch_size
+    # 从左到右 从上到下
+    for y1 in range(padding, row * patch_size, patch_size):
+        for x1 in range(padding, col * patch_size, patch_size):
+            patch = image[:, y1 - padding:y1 + patch_size + padding, x1 - padding:x1 + patch_size + padding]
+            patch = patch.unsqueeze(0)
+            patches.append(patch)
+    return patches, row, col
+
+
+def infer(image, model, device, patch_size=448, batch=8, padding=16):
+    img_input = cv2.imread(image) if isinstance(image, str) else image
+    channel = 3  # 模型输出的通道数
+    img_input = cv2.cvtColor(img_input, cv2.COLOR_BGR2RGB) if channel == 3 else cv2.cvtColor(img_input,
+                                                                                             cv2.COLOR_BGR2GRAY)
+    split_images, row, col = image2block(img_input, patch_size=patch_size, padding=padding)
+    img_output = torch.zeros((row * patch_size, col * patch_size, channel), dtype=torch.float)
+    with torch.no_grad():
+        for i in range(0, len(split_images), batch):
+            batch_input = torch.cat(split_images[i:i + batch], dim=0)
+            batch_output = model(batch_input.to(device))
+            batch_output = batch_output[:, :, padding:-padding, padding:-padding].permute(0, 2, 3, 1).cpu()
+            for j, output in enumerate(batch_output):
+                y = (i + j) // col * patch_size
+                x = (i + j) % col * patch_size
+                img_output[y:y + patch_size, x:x + patch_size] = output
+    img_output = img_output[:img_input.shape[0], :img_input.shape[1]].numpy()
+    mean = np.array([-2.12, -2.04, -1.80])
+    std = np.array([4.36, 4.46, 4.44])
+    img_output = (img_output - mean) / std
+    img_output = np.clip(img_output * 255, a_min=0, a_max=255).astype(np.uint8)
+    # img_output = cv2.cvtColor(img_output, cv2.COLOR_RGB2BGR)
+    return img_input, img_output
 
 
 class PercentProgressBar(QWidget):
@@ -262,11 +315,12 @@ class PercentProgressBar(QWidget):
 class PredictionWorker(QObject):
     update_progress = pyqtSignal(int)
 
-    def predict(self, model, device, image_list, filter_name, temperature=1.0,quality=100, padding=16, patch_size=640, batch=8):
+    def predict(self, model, device, image_list, filter_name, temperature=1.0, quality=100, padding=16, patch_size=640,
+                batch=8):
         model = model.to(device)
         start = 0
         for n, image in enumerate(image_list):
-            img = cv2.imread(image) if isinstance(image,str) else image
+            img = cv2.imread(image) if isinstance(image, str) else image
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             split_images, row, col = image2block(img, patch_size=patch_size, padding=padding)
             target = torch.zeros((row * patch_size, col * patch_size, 3), dtype=torch.float32)
@@ -294,6 +348,10 @@ class PredictionWorker(QObject):
             start = int(end)
             file_name, file_type = os.path.splitext(image)
             target = target[:img.shape[0], :img.shape[1]].numpy()
+            # add unnormalize
+            mean = np.array([-2.12, -2.04, -1.80])
+            std = np.array([4.36, 4.46, 4.44])
+            target = (target - mean) / std
             target = (1.0 - temperature) * img + temperature * target
             target = np.clip(target * 255, a_min=0, a_max=255).astype(np.uint8)
             target = cv2.cvtColor(target, cv2.COLOR_RGB2BGR)
@@ -301,7 +359,7 @@ class PredictionWorker(QObject):
 
 
 class PredictionThread(QThread):
-    def __init__(self, image_list, model, device, image_quality, filter_name,temperature):
+    def __init__(self, image_list, model, device, image_quality, filter_name, temperature):
         super().__init__()
         self.worker = PredictionWorker()
         self.image_list = image_list
@@ -320,91 +378,27 @@ class PredictionThread(QThread):
 
 
 class MyMainWindow(QMainWindow):
+
     def __init__(self):
         super().__init__()
         self.predict_image = ''
         self.save_path = ''
-        self.showing_image = ''# 当前正在显示的图像
+        self.showing_image = ''  # 当前正在显示的图像
         self.default_filter = 'FJ-NC'
         self.quality_num = 100  # 默认图像质量
-        # self.temperature = 100  # 默认温度系数 100为正常滤镜
         self.temp_pred_img = None
-        self.model = FilterSimulation()
-        if torch.cuda.is_available():
-            self.device = torch.device('cuda:0')
-        elif torch.backends.mps.is_available():
+        self.model_name = 'FilterSimulation'
+        # if torch.cuda.is_available():
+        #     self.device = torch.device('cuda:0')
+        if torch.backends.mps.is_available():
             self.device = torch.device('mps')
         else:
             self.device = torch.device('cpu')
-        self.model = self.model.to(self.device)
-        self.background_img = cv2.cvtColor(cv2.imread(os.path.join(file_path,'static/src/background.jpg')),cv2.COLOR_BGR2RGB)
-        self.checkpoints_dict = {
-            'FilmMask': os.path.join(file_path, 'static', 'checkpoints', 'film-mask', 'best.pth'),  # 去色罩
-            # Fuji Filters
-            'FJ-A': '',  # ACROS
-            'FJ-CC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-chrome', 'best.pth'),
-            # CLASSIC CHROME
-            'FJ-E': '',  # ETERNA
-            'FJ-EB': '',
-            # ETERNA BLEACH BYPASS
-            'FJ-NC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-neg', 'best.pth'),
-            # CLASSIC Neg.
-            'FJ-NH': '',  # PRO Neg.Hi
-            'FJ-NN': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'nostalgic-neg', 'best.pth'),
-            # NOSTALGIC Neg.
-            'FJ-NS': '',  # PRO Neg.Std
-            'FJ-S': '',  # ASTIA
-            'FJ-STD': '',  # PROVIA
-            'FJ-V': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'velvia', 'best.pth'),  # VELVIA
-            'FJ-Pro400H': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'pro400h', 'best.pth'),  # VELVIA
-            'FJ-Superia400': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'superia400', 'best.pth'),
-            # VELVIA
-            'FJ-C100': '',
-            'FJ-C200': '',
-            'FJ-C400': '',
-            'FJ-Provia400X': '',
-            # Kodak Filters
-            'KD-ColorPlus': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'colorplus', 'best.pth'),
-            # color plus
-            'KD-Gold200': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'gold200', 'best.pth'),  # gold 200
-            'KD-UltraMax400': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'ultramax400', 'best.pth'),
-            # ultramax 400
-            'KD-Portra400': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'portra400', 'best.pth'),
-            # portra 400
-            'KD-Portra160NC': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'portra160nc', 'best.pth'),
-            # portra 160nc
-            'KD-E100': '',
-            'KD-Ektar100': '',
 
-            # Polaroid
-            'Polaroid':os.path.join(file_path,'static','checkpoints', 'polaroid','best.pth'),
+        self.model = self.load_model()
 
-            # Digital
-            # Olympus Filters
-            "OM-VIVID": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'vivid', 'best.pth'),  # 浓郁色彩
-            "OM-SoftFocus": '',  # 柔焦
-            "OM-SoftLight": '',  # 柔光
-            "OM-Nostalgia": '',   # 怀旧颗粒
-            "OM-Stereoscopic": '', # 立体
-            # # Richo Filters
-            # 'R-Std': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'std', 'best.pth'),  # 标准
-            # 'R-Vivid': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'vivid', 'best.pth'),  # 鲜艳
-            # 'R-Single': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'single', 'best.pth'),  # 单色
-            # 'R-SoftSingle': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'soft-single', 'best.pth'),  # 软单色
-            # 'R-StiffSingle': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'stiff-single', 'best.pth'), # 硬单色
-            # 'R-ContrastSingle': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'contrastSingle', 'best.pth'),    # 高对比对黑白
-            # 'R-Neg': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'neg', 'best.pth'),  # 负片
-            # 'R-Pos': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'pos', 'best.pth'),  # 正片
-            # 'R-Nostalgia': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'nostalgia', 'best.pth'),  # 怀旧
-            # 'R-HDR': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'hdr', 'best.pth'),  # HDR
-            # 'R-Pos2Neg': os.path.join(file_path, 'static', 'checkpoints', 'richo', 'pos2neg', 'best.pth'),  # 正负逆冲
-            # # Canon Filters
-            # 'Canon': os.path.join(file_path, 'static', 'checkpoints', 'canon', 'best.pth'),  # 佳能
-            # # Sony Filters
-            # 'Sony': os.path.join(file_path, 'static', 'checkpoints', 'sony', 'best.pth'),  # 索尼
-            # # Nikon Filters
-            # 'Nikon': os.path.join(file_path, 'static', 'checkpoints', 'nikon', 'best.pth'),  # 尼康
-        }
+        self.background_img = cv2.cvtColor(cv2.imread(os.path.join(file_path, 'static/src/background.jpg')),
+                                           cv2.COLOR_BGR2RGB)
         self.description = {
             'FilmMask': '去除彩色负片的色罩',
             # from Fuji xs20
@@ -427,30 +421,109 @@ class MyMainWindow(QMainWindow):
             'FJ-C400': '充满活力、逼真的色彩和细腻的颗粒',
             'FJ-Provia400X': '一流的精细粒度和清晰度，适合风景、自然、快照和人像摄影',
             # from google
-            'KD-ColorPlus':'颗粒结构细、清晰度高、色彩饱和度丰富',
+            'KD-ColorPlus': '颗粒结构细、清晰度高、色彩饱和度丰富',
             'KD-Gold200': '具有色彩饱和度、细颗粒和高清晰度的出色组合',
             # from https://imaging.kodakalaris.com/sites/default/files/wysiwyg/KodakUltraMax400TechSheet-1.pdf
-            'KD-UltraMax400':'明亮，充满活力的色彩，准确的肤色再现自然的人物照片',
+            'KD-UltraMax400': '明亮，充满活力的色彩，准确的肤色再现自然的人物照片',
             'KD-Portra400': '自然肤色、高细节和细颗粒，自然的暖色调',
             'KD-Portra160NC': '微妙的色彩和平滑、自然的肤色',
             'KD-E100': '极细的颗粒结构，充满活力的显色性，整体低对比度轮廓',
             'KD-Ektar100': '超鲜艳的调色、高饱和度和极其精细的颗粒结构',
-            'Polariod':'具有艺术感的色彩'
+            'Polariod': '具有艺术感的色彩'
         }
         self.gray_list = ['FJ-A']
-        self.model.load_state_dict(
-            state_dict=torch.load(self.checkpoints_dict[self.default_filter], map_location=self.device))
-        self.set4layout()
-        self.set4stylesheet()
+        self.set_layout()
+        self.set_style()
 
-    def set4layout(self):
+    def load_model(self, model_name='UNet', filter_name='FJ-NC', channel=3):
+        """
+        加载模型，替换权重字典
+        """
+        model_list = {
+            'UNet': {'model': UNet(channel=channel), 'pth': 'best.pth'},
+            'FilterSimulation': {'model': FilterSimulation4(channel=channel), 'pth': 'best-v4.pth'}
+        }
+        self.checkpoints_dict = {
+            'FilmMask': os.path.join(file_path, 'static', 'checkpoints', 'film-mask',
+                                     model_list[model_name]['pth']),  # 去色罩
+            # Fuji Filters
+            'FJ-A': '',  # ACROS
+            'FJ-CC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-chrome',
+                                  model_list[model_name]['pth']),
+            # CLASSIC CHROME
+            'FJ-E': '',  # ETERNA
+            'FJ-EB': '',
+            # ETERNA BLEACH BYPASS
+            'FJ-NC': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'classic-neg',
+                                  model_list[model_name]['pth']),
+            # CLASSIC Neg.
+            'FJ-NH': '',  # PRO Neg.Hi
+            'FJ-NN': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'nostalgic-neg',
+                                  model_list[model_name]['pth']),
+            # NOSTALGIC Neg.
+            'FJ-NS': '',  # PRO Neg.Std
+            'FJ-S': '',  # ASTIA
+            'FJ-STD': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'provia',
+                                   model_list[model_name]['pth']),  # PROVIA
+            'FJ-V': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'velvia',
+                                 model_list[model_name]['pth']),  # VELVIA
+            'FJ-Pro400H': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'pro400h',
+                                       model_list[model_name]['pth']),  # VELVIA
+            'FJ-Superia400': os.path.join(file_path, 'static', 'checkpoints', 'fuji', 'superia400',
+                                          model_list[model_name]['pth']),
+            # VELVIA
+            'FJ-C100': '',
+            'FJ-C200': '',
+            'FJ-C400': '',
+            'FJ-Provia400X': '',
+            # Kodak Filters
+            'KD-ColorPlus': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'colorplus',
+                                         model_list[model_name]['pth']),
+            # color plus
+            'KD-Gold200': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'gold200',
+                                       model_list[model_name]['pth']),  # gold 200
+            'KD-UltraMax400': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'ultramax400',
+                                           model_list[model_name]['pth']),
+            # ultramax 400
+            'KD-Portra400': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'portra400',
+                                         model_list[model_name]['pth']),
+            # portra 400
+            'KD-Portra160NC': os.path.join(file_path, 'static', 'checkpoints', 'kodak', 'portra160nc',
+                                           model_list[model_name]['pth']),
+            # portra 160nc
+            'KD-E100': '',
+            'KD-Ektar100': '',
+
+            # Polaroid
+            'Polaroid': os.path.join(file_path, 'static', 'checkpoints', 'polaroid',
+                                     model_list[model_name]['pth']),
+
+            # Digital
+            # Olympus Filters
+            "OM-VIVID": os.path.join(file_path, 'static', 'checkpoints', 'olympus', 'vivid',
+                                     model_list[model_name]['pth']),  # 浓郁色彩
+            "OM-SoftFocus": '',  # 柔焦
+            "OM-SoftLight": '',  # 柔光
+            "OM-Nostalgia": '',  # 怀旧颗粒
+            "OM-Stereoscopic": '',  # 立体
+        }
+        model = model_list[model_name]['model']
+        pth = torch.load(self.checkpoints_dict[filter_name], map_location=self.device)
+        model = model.to(self.device)
+        model.load_state_dict(state_dict=pth)
+        return model
+
+    def set_layout(self):
+        """
+        设置整体布局
+        """
         self.setWindowTitle("Filter Simulator")
 
         # 创建一个中心的 QWidget 用于容纳垂直布局
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         self.setGeometry(100, 100,
-                        600, 500)
+                         600, 500)
         self.setMinimumSize(600, 500)
 
         # 整体设置垂直布局->上中下
@@ -484,7 +557,7 @@ class MyMainWindow(QMainWindow):
             button.setFixedWidth(80)
             button.setFixedHeight(80)  # 设置按钮高度
             if 'ORG' in filter_name:
-                button.setToolTip(f'{self.description[filter_name.replace("-ORG.png","")]}')
+                button.setToolTip(f'{self.description[filter_name.replace("-ORG.png", "")]}')
             if filter_name.replace('-ORG.png', '') == self.default_filter:
                 button.setStyleSheet(
                     "QPushButton { border-image: url("
@@ -501,7 +574,7 @@ class MyMainWindow(QMainWindow):
                 button.setEnabled(False)
             self.filter_buttons.append((button, filter_name))
             # 按钮的滤镜选择事件
-            button.clicked.connect(lambda state, button=button: self.choose4filters(button))
+            button.clicked.connect(lambda state, button=button: self.switch_filters(button))
             self.filter_button_group.addButton(button)
             filter_layout.addWidget(button)
 
@@ -515,8 +588,9 @@ class MyMainWindow(QMainWindow):
         predict_layout.setContentsMargins(0, 0, 0, 0)
 
         # 图片输入框
-        self.img_input = QLabel('Drag Image Here')
+        self.img_input = QLabel('Drag/Upload Image Here')
         # self.img_input.setAcceptDrops(True) # 启用 QLabel 接受拖放事件
+        # self.img_input = ImageLabel('Drag Image Here')
 
         predict_layout.addWidget(self.img_input, 4)
 
@@ -547,7 +621,6 @@ class MyMainWindow(QMainWindow):
         button_layout.addWidget(self.start_button)
         self.button_bar.setLayout(button_layout)
 
-
         slider_button_bar = QWidget()
         slider_button_bar_layout = QHBoxLayout()
         slider_button_bar_layout.addWidget(self.sliders)
@@ -555,8 +628,6 @@ class MyMainWindow(QMainWindow):
         slider_button_bar_layout.setSpacing(0)
         slider_button_bar_layout.setContentsMargins(0, 0, 0, 0)
         slider_button_bar.setLayout(slider_button_bar_layout)
-
-
 
         # predict_layout.addWidget(self.button_bar, STYLE['start_button']['grid3'])
         predict_layout.addWidget(slider_button_bar, 1)
@@ -571,6 +642,14 @@ class MyMainWindow(QMainWindow):
 
         # 底部留白区域
         self.bottom = QWidget()
+        self.combo = QComboBox()
+        self.combo.setFixedWidth(80)
+        self.combo.addItem('FilterSimulation')
+        self.combo.addItem('UNet')
+        self.combo.currentIndexChanged.connect(self.switch_models)
+        bottom_layout = QVBoxLayout()
+        bottom_layout.addWidget(self.combo)
+        self.bottom.setLayout(bottom_layout)
         window_layout.addWidget(self.bottom, 1)
 
         # 设置中心窗口的布局
@@ -579,7 +658,10 @@ class MyMainWindow(QMainWindow):
 
         self.warning_box = QMessageBox()
 
-    def set4stylesheet(self):
+    def set_style(self):
+        """
+        设置样式
+        """
         # 标题区域
         font1 = QFont()
         font1.setBold(True)
@@ -635,7 +717,6 @@ class MyMainWindow(QMainWindow):
             "QSlider::sub-page:horizontal{background: #4DA690; }"
         )
 
-
         # 图片输入框
         font2 = QFont()
         font2.setBold(True)
@@ -674,53 +755,17 @@ class MyMainWindow(QMainWindow):
         # 底部区域
         self.bottom.setStyleSheet("background-color: #76b3e2;")
 
-    def dragEnterEvent(self, e):
-        if e.mimeData().hasUrls():
-            e.accept()
-        else:
-            e.ignore()
-
-    def dropEvent(self, e):
-        """
-        拖拽事件：将图像拖入到选框中
-        """
-        for url in e.mimeData().urls():
-            if url.isLocalFile():
-                self.predict_image = url.toLocalFile()
-                self.save_path = ''
-                # 获取所有图像
-                if os.path.isdir(self.predict_image):
-                    self.predict_image = [os.path.join(self.predict_image, img) for img in os.listdir(self.predict_image)]
-                else:
-                    self.predict_image = [self.predict_image]
-                # 判断图像类型
-                self.predict_image = [img for img in self.predict_image if self.judge_image(img)]
-                if self.predict_image:
-                    self.showing_image = self.predict_image[0]
-                    # 预测小图像
-                    img = cv2.imread(self.showing_image)
-                    img = cv2.resize(img,(600,int(600*img.shape[0]/img.shape[1])))
-                    self.temp_org_img,self.temp_pred_img = infer(img, self.model, self.device)
-                    self.reshow(org_img=self.temp_org_img,pred_img=self.temp_pred_img)
-                else:
-                    self.warning_box.setWindowTitle("Waring")
-                    self.warning_box.setText("Unable to open this image!")
-                    self.warning_box.setStandardButtons(QMessageBox.Ok)
-                    self.warning_box.exec_()
-                    self.predict_image = []
-                    self.showing_image = ''
-
-    def reshow(self,org_img,pred_img):
+    def reshow(self, org_img, pred_img):
         temp = self.temp_slider.value() / 100
         im = (1.0 - temp) * (org_img / 255.0) + temp * (pred_img / 255.0)
         # im = torch.clamp(im * 255, min=0, max=255).numpy().astype(np.uint8)
         im = np.clip(im * 255, a_min=0, a_max=255).astype(np.uint8)
-        self.display4image(im)
+        self.set_displaying(im)
 
-    def display4image(self, image):
+    def set_displaying(self, image):
 
         w, h = self.img_input.width(), self.img_input.height()
-        im = cv2.cvtColor(cv2.imread(image),cv2.COLOR_BGR2RGB) if isinstance(image,str) else image
+        im = cv2.cvtColor(cv2.imread(image), cv2.COLOR_BGR2RGB) if isinstance(image, str) else image
         # 保持原有的比例缩放
         imH, imW, _ = im.shape
         if (imW / imH) >= (w / h):
@@ -745,16 +790,6 @@ class MyMainWindow(QMainWindow):
         self.img_input.setPixmap(pixmap)
         self.img_input.setAlignment(Qt.AlignCenter)
 
-    def judge_image(self,image):
-        image_type = image.split('.')[-1]
-        if image_type.lower() in ['jpg','png','jpeg','tif','tiff','jp2']:
-            if cv2.imread(image) is not None:
-                return True
-            else:
-                return False
-        else:
-            return False
-
     def set_quality(self):
         # 设置输出图像的质量
         self.quality_num = self.quality_slider.value()
@@ -775,7 +810,8 @@ class MyMainWindow(QMainWindow):
             file_name, file_type = os.path.splitext(self.predict_image[-1])
             self.save_path = f"{file_name}_{self.default_filter}{file_type}"
             self.prediction_thread = PredictionThread(self.predict_image, self.model, self.device,
-                                                      self.quality_num, self.default_filter,self.temp_slider.value()/100)
+                                                      self.quality_num, self.default_filter,
+                                                      self.temp_slider.value() / 100)
             self.prediction_thread.worker.update_progress.connect(self.update_progress_bar)
             # self.prediction_thread.finished.connect(lambda: self.finish_prediction(self.save_path))
             self.start_button.setEnabled(False)
@@ -787,34 +823,25 @@ class MyMainWindow(QMainWindow):
             self.warning_box.setStandardButtons(QMessageBox.Ok)
             self.warning_box.exec_()
 
-    # def finish_prediction(self,save_path):
-    #     self.finishing_image = save_path
-    #     self.display4image(self.finishing_image,dynamic=False)
-
     def update_progress_bar(self, value):
+
         self.progress_bar.setValue(value)
         if value == 100:
             self.start_button.setEnabled(True)
-            # todo 新增保存路径提示
+            # 新增保存路径提示
             self.warning_box.setWindowTitle("Notice！")
-            self.warning_box.setText(f"Save Dir: {os.path.dirname(self.save_path)}")
+            self.warning_box.setText(f"Save On: {os.path.dirname(self.save_path)}")
             self.warning_box.setStandardButtons(QMessageBox.Ok)
             self.warning_box.exec_()
 
-    def choose4filters(self, clicked_button):
+    def switch_filters(self, clicked_button):
         for button, filter_name in self.filter_buttons:
             if button is clicked_button:
                 self.default_filter = filter_name.replace('-ORG', '').replace('.png', '')
-                pth_name = self.checkpoints_dict[self.default_filter]
-                if self.default_filter in self.gray_list:
-                    # self.model = FilterSimulation(channel=1)
-                    self.model = UNet(channel=1)
-                else:
-                    # self.model = FilterSimulation(channel=3)
-                    self.model = UNet(channel=3)
-                self.model.load_state_dict(
-                    state_dict=torch.load(pth_name, map_location=self.device))
-                self.model = self.model.to(self.device)
+                channel = 1 if self.default_filter in self.gray_list else 3
+                self.model = self.load_model(model_name=self.model_name, filter_name=self.default_filter,
+                                             channel=channel)
+
                 button.setStyleSheet("QPushButton { border-image: url("
                                      + os.path.join(file_path, 'static', 'src',
                                                     filter_name.replace('-ORG', '')).replace('\\', '/')
@@ -832,6 +859,68 @@ class MyMainWindow(QMainWindow):
                                      + os.path.join(file_path, 'static', 'src', filter_name).replace('\\', '/')
                                      + ");}"  # 背景颜色
                                      )
+
+    def switch_models(self):
+        channel = 1 if self.default_filter in self.gray_list else 3
+        self.load_model(model_name=self.combo.currentText(), filter_name=self.default_filter, channel=channel)
+
+    def upload_image(self, mode='click', urls=None):
+        if mode == 'click':
+            # 打开文件对话框选择图片文件
+            file_dialog = QFileDialog()
+            file_dialog.setNameFilter("Images (*.png *.jpg *.jpeg *.tiff)")
+            file_dialog.setViewMode(QFileDialog.Detail)
+            if file_dialog.exec_():
+                self.predict_image = [file_dialog.selectedFiles()[0]]
+        else:
+            for url in urls:
+                if url.isLocalFile():
+                    self.predict_image = url.toLocalFile()
+                    self.save_path = ''
+                    # 获取所有图像
+                    if os.path.isdir(self.predict_image):
+                        self.predict_image = [os.path.join(self.predict_image, img) for img in
+                                              os.listdir(self.predict_image)]
+                    else:
+                        self.predict_image = [self.predict_image]
+        if self.predict_image:
+            try:
+                self.showing_image = self.predict_image[0]
+                img = cv2.imread(self.showing_image)
+                img = cv2.resize(img, (600, int(600 * img.shape[0] / img.shape[1])))
+                self.temp_org_img, self.temp_pred_img = infer(img, self.model, self.device)
+                self.reshow(org_img=self.temp_org_img, pred_img=self.temp_pred_img)
+            except:
+                self.warning_box.setWindowTitle("Waring")
+                self.warning_box.setText("Unable to open this image!")
+                self.warning_box.setStandardButtons(QMessageBox.Ok)
+                self.warning_box.exec_()
+                self.predict_image = []
+                self.showing_image = ''
+
+    def dragEnterEvent(self, e):
+        if e.mimeData().hasUrls():
+            e.accept()
+        else:
+            e.ignore()
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self.upload_image(mode='click')
+
+    def dropEvent(self, e):
+        """
+        拖拽事件：将图像拖入到选框中
+        """
+        self.upload_image(mode='drop', urls=e.mimeData().urls())
+
+    def enterEvent(self, e):
+        self.img_input.setStyleSheet("background-color: #292a2e;"
+                                     "color: #e9edf7;")
+
+    def leaveEvent(self, e):
+        self.img_input.setStyleSheet("background-color: #3a3c42;"
+                                     "color: #e9edf7;")
 
 
 if __name__ == '__main__':
