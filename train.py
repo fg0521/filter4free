@@ -14,13 +14,12 @@ from torchvision import transforms
 import torch.nn as nn
 
 from infer import image2block
-from loss import RGBLoss, EDMLoss, PerceptualLoss
-from models import FilterSimulation3,  FilterSimulation4
+from loss import RGBLoss, EDMLoss, PerceptualLoss, HistogramLoss
+from models import FilterSimulation3, FilterSimulation4
 import numpy as np
 import matplotlib.pyplot as plt
+
 # from infer import image2block
-import wandb
-from test import UNet, UNetStudent
 
 seed = 3407
 torch.manual_seed(seed)
@@ -28,12 +27,15 @@ torch.cuda.manual_seed_all(seed)  # gpu
 np.random.seed(seed)  # numpy
 random.seed(seed)  # random and transforms
 torch.backends.cudnn.deterministic = True  #
-wandb.login(key='78f2fd2cf17e26318b0724a2d317847d0bd74232')
+
+
 def lr_lambda(epoch):
     return 1 if epoch < 50 else 0.1
 
+
 class Trainer:
-    def __init__(self, model, data_path, save_model_path, channel='rgb', resize=(700, 700), pretrained_model_path=None,
+    def __init__(self, model, data_path, save_model_path, wandb=None, channel='rgb', resize=(700, 700),
+                 pretrained_model_path=None,
                  test_image=None):
         """
         model: 模型
@@ -45,12 +47,14 @@ class Trainer:
         test_image: 测试图像数据
         resize: 模型训练图像大小
         """
-        self.wandb = wandb
-        self.wandb.init(
-            project='filter4free',
-            resume=False,
-            notes='./logs',
-        )
+
+        if wandb is not None:
+            self.wandb = wandb
+            self.wandb.init(
+                project='filter4free',
+                resume=False,
+                notes='./logs',
+            )
         self.model = model
         if torch.cuda.is_available():
             self.device = torch.device('cuda:0')
@@ -71,7 +75,7 @@ class Trainer:
             os.mkdir(save_model_path)
         self.save_model_path = save_model_path
 
-    def train(self, epoch_num=200, lr=0.00001, batch_size=8, eval_step=5, early_stop_step=10, save_cfg=True):
+    def train(self, epoch_num=200, lr=0.00001, batch_size=8, eval_step=5, early_stop_step=10):
         """
         epoch: 训练轮次
         lr: 学习率
@@ -98,12 +102,12 @@ class Trainer:
         max_loss = 1.0
         flag = 0
         train_loss, eval_loss = [], []
-        for epoch in range(1, epoch_num):
+        for epoch in range(1, epoch_num+1):
             self.model.train()
             loss_list = [[], []]
             pbar = tqdm(total=len(train_loader), desc=f"Epoch: {epoch}: ", ncols=100)
             epoch_train_loss = []
-            show_step = int(len(train_loader)*0.1)
+            show_step = int(len(train_loader) * 0.1)
             for step, (org_img, goal_img) in enumerate(train_loader):
                 org_img, goal_img = org_img.to(self.device), goal_img.to(self.device)
                 optimizer.zero_grad()
@@ -119,12 +123,18 @@ class Trainer:
                                     'l1_loss': round(sum(loss_list[1]) / len(loss_list[1]), 4), })  # 参数列表
                 pbar.update(1)  # 步进长度
                 epoch_train_loss.append(train_rgb_loss.item() + train_l1_loss.item())
-                self.wandb.log({
+                msg = {
                     "rgb_loss": train_rgb_loss.item(),
                     "l1_loss": train_l1_loss.item()
-                }, commit=False)
+                }
                 if step % show_step == 0 and step != 0:
                     self.visualize(org_im=org_img, true_im=goal_img, pred_im=out)
+                else:
+                    if self.wandb is not None:
+                        self.wandb.log({})
+                if self.wandb is not None:
+                    self.wandb.log(msg, commit=False)
+
             scheduler.step()
             # StepLR.step()
             torch.save(self.model.state_dict(), os.path.join(self.save_model_path, f"epoch{epoch}.pth"))
@@ -147,6 +157,11 @@ class Trainer:
                 logging.info(f'The Model Did Not Improve In {early_stop_step} Validations!')
                 break
             train_loss.append(sum(epoch_train_loss) / len(epoch_train_loss))
+
+        self.write2graph(train_loss=train_loss, eval_loss=eval_loss,
+                         epoch=epoch_num, lr=lr, batch_size=batch_size, eval_step=eval_step)
+
+    def write2graph(self, train_loss, eval_loss, epoch, lr, batch_size, eval_step):
         with open(os.path.join(self.save_model_path, 'train_loss.txt'), 'w') as file:
             [file.write(f"{line}\n") for line in train_loss]
         with open(os.path.join(self.save_model_path, 'eval_loss.txt'), 'w') as file2:
@@ -156,16 +171,16 @@ class Trainer:
         plt.legend(labels=['train_loss', 'eval_loss'])
         plt.savefig(os.path.join(self.save_model_path, 'loss.png'))
         plt.clf()
-        if save_cfg:
-            info = {
-                'epoch': epoch,
-                'learning_rate': lr,
-                'batch_size': batch_size,
-                'eval_step': eval_step,
-                'device': str(self.device)
-            }
-            with open(os.path.join(self.save_model_path, 'config.json'), 'w') as f:
-                json.dump(info, f, ensure_ascii=True)
+        info = {
+            'model_name': self.model.name,
+            'epoch': epoch,
+            'learning_rate': lr,
+            'batch_size': batch_size,
+            'eval_step': eval_step,
+            'device': str(self.device),
+        }
+        with open(os.path.join(self.save_model_path, 'config.json'), 'w') as f:
+            json.dump(info, f, ensure_ascii=True)
 
     def evaluation(self, val_loader, epoch):
         total_eval_loss = []
@@ -203,7 +218,7 @@ class Trainer:
             for i in tqdm(range(0, len(split_images), batch), desc='测试图像推理', ncols=100):
                 input = torch.vstack(split_images[i:i + batch])
                 input = input.to(self.device)
-                output = self.model(input)
+                output, lut = self.model(input)
                 for k in range(output.shape[0]):
                     # RGB Channel
                     out = torch.clamp(output[k, :, :, :] * 255, min=0, max=255).byte().permute(1, 2,
@@ -239,15 +254,13 @@ class Trainer:
 
 
 if __name__ == '__main__':
-
-
-    trainer = Trainer(data_path='/Users/maoyufeng/slash/dataset/train_dataset/polaroid',
-                      model=UNetStudent(),
-                      save_model_path='/Users/maoyufeng/Downloads/polaroid2',
+    import wandb
+    trainer = Trainer(data_path='/Users/maoyufeng/slash/dataset/train_dataset/classic-neg',
+                      model=FilterSimulation4(training=True),
+                      save_model_path='/Users/maoyufeng/Downloads/test',
                       pretrained_model_path='',
-                      channel='rgb')
-    trainer.train(epoch_num=500, lr=1e-3, batch_size=8, eval_step=1, early_stop_step=20)
-
-
-    # trainer = Trainer2()
-    # trainer.run()
+                      channel='rgb',
+                      resize=(256, 256),
+                      wandb=wandb
+                      )
+    trainer.train(epoch_num=1, lr=1e-5, batch_size=8, eval_step=1, early_stop_step=20)
