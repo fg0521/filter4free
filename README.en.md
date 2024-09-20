@@ -18,6 +18,7 @@ Use `neural networks` to fit various `camera filters` and `film colors`! The fol
 - `【dir】idea`：theoretical research
   - `src`：resource files
 - `【dir】pack`：Nuitka package
+- `【dir】script`：model convert script
 - `train.py`：training script
 - `train_new.py`：new training script
 - `dataset.py`：dataset script
@@ -32,58 +33,83 @@ Use `neural networks` to fit various `camera filters` and `film colors`! The fol
 
 ###### Negative color mask
 
-1. `NegativeLabPro（NLP`）：**static/checkpoints/film-mask/best.pth** ✅️
+* [x] `NegativeLabPro（NLP`）：**static/checkpoints/film-mask/best.pth** 
 
 ###### Olympus Film
+* [x] `VIVID-浓郁色彩` ：**static/checkpoints/olympus/vivid/best.pth** 
 
-1. `VIVID-浓郁色彩` ：**static/checkpoints/olympus/vivid/best.pth** ✅
-2. `SoftFocus-柔焦` ：❎
-3. ️`SoftLight-柔光` ：❎
-4. `Nostalgia-怀旧颗粒` ：❎
-5. `Stereoscopic-立体` ：❎
+* [ ] `SoftFocus-柔焦` ：
+
+* [ ] `SoftLight-柔光` ：
+
+* [ ] `Nostalgia-怀旧颗粒` ：
+
+* [ ] `Stereoscopic-立体` ：
 
 ###### Fuji Film
+* [ ] `ACROS `：
 
-1. `ACROS `：❎
-2. `CLASSIC CHROME` ：**static/checkpoints/fuji/classic-chrome/best.pth**✅
-3. `ETERNA `：❎
-4. `ETERNA BLEACH BYPASS `：❎
-5. `CLASSIC Neg. `：**static/checkpoints/fuji/classic-neg/best.pth**✅
-6. `PRO Neg.Hi `：❎
-7. `NOSTALGIC Neg.`：**static/checkpoints/fuji/nostalgic-neg/best.pth** ✅
-8. `PRO Neg.Std` ：❎
-9. `ASTIA `：❎
-10. `PROVIA`：**static/checkpoints/fuji/provia/best.pth** ✅
-11. `VELVIA`：**static/checkpoints/fuji/velvia/best.pth** ✅
-12. `Pro 400H`：**static/checkpoints/fuji/pro400h/best.pth** ✅
-13. `Superia 400`：**static/checkpoints/fuji/superia400/best.pth** ✅
+* [ ] `CLASSIC CHROME` ：**static/checkpoints/fuji/classic-chrome/best.pth**
 
+* [ ] `ETERNA `：
+
+* [ ] `ETERNA BLEACH BYPASS `：
+
+* [x] `CLASSIC Neg. `：**static/checkpoints/fuji/classic-neg/best.pth**
+
+* [ ] `PRO Neg.Hi `：
+
+* [x] `NOSTALGIC Neg.`：**static/checkpoints/fuji/nostalgic-neg/best.pth** 
+
+* [ ] `PRO Neg.Std` ：
+
+* [ ] `ASTIA `：
+
+* [x] `PROVIA`：**static/checkpoints/fuji/provia/best.pth** 
+
+* [x] `VELVIA`：**static/checkpoints/fuji/velvia/best.pth** 
+
+* [x] `Pro 400H`：**static/checkpoints/fuji/pro400h/best.pth** 
+
+* [x] `Superia 400`：**static/checkpoints/fuji/superia400/best.pth**
 
 ###### Kodak Film
+* [x] `Color Plus`：**static/checkpoints/kodak/colorplus/best.pth** 
 
-1. `Color Plus`：**static/checkpoints/kodak/colorplus/best.pth** ✅
-2. `Gold 200`：**static/checkpoints/kodak/gold200/best.pth** ✅
-3. `Portra 400`：**static/checkpoints/kodak/portra400/best.pth** ✅
-4. `Portra 160NC`：**static/checkpoints/kodak/portra160nc/best.pth** ✅ 
-5. `UltraMax 400`：**static/checkpoints/kodak/ultramax400/best.pth** ✅
+* [x] `Gold 200`：**static/checkpoints/kodak/gold200/best.pth** 
+
+* [x] `Portra 400`：**static/checkpoints/kodak/portra400/best.pth** 
+
+* [x] `Portra 160NC`：**static/checkpoints/kodak/portra160nc/best.pth** 
+
+* [x] `UltraMax 400`：**static/checkpoints/kodak/ultramax400/best.pth** 
 
 ###### Rochi Film
+* [ ] `Std-标准` ：
 
-1. `Std-标准` ：❎
-2. `Vivid-鲜艳` ：❎
-3. `Single-单色` ：❎
-4. `SoftSingle-软单色` ：❎
-5. `StiffSingle-硬单色` ：❎
-6. `ContrastSingle-高对比对黑白` ：❎
-7. `Neg-负片` ：❎
-8. `R-Pos-正片` ：❎
-9. `R-Nostalgia-怀旧` ：❎
-10. `R-HDR-HDR` ：❎
-11. `R-Pos2Neg-正负逆冲` ：❎
+* [ ] `Vivid-鲜艳` ：
+
+* [ ] `Single-单色` ：
+
+* [ ] `SoftSingle-软单色` ：
+
+* [ ] `StiffSingle-硬单色` ：
+
+* [ ] `ContrastSingle-高对比对黑白` ：
+
+* [ ] `Neg-负片` ：
+
+* [ ] `R-Pos-正片` ：
+
+* [ ] `R-Nostalgia-怀旧` ：
+
+* [ ] `R-HDR-HDR` ：
+
+* [ ] `R-Pos2Neg-正负逆冲` ：
 
 ###### Polaroid Film
 
-1. `Polaroid`：**static/checkpoints/polaroid/best.pth** ✅
+* [x] `Polaroid`：**static/checkpoints/polaroid/best.pth** 
 
 ###### Sony Film
 
@@ -134,15 +160,21 @@ Use `neural networks` to fit various `camera filters` and `film colors`! The fol
 
 ###### GUI
 
-![](/Users/maoyufeng/slash/project/filter4free/src/comment.jpg)
+![](src/comment.jpg)
+
+###### iPhone inference
+
+convert pytorch to coreml，and infer on iphone14 pro, cost 4s when inferring a 12M image.
+
+![iphone](src/iphone.gif)
 
 #### 5.Experimental Record
 
 1.Refer to `idea/对比实验.md`, the framework is as follows:
-![](/Users/maoyufeng/slash/project/filter4free/idea/src/模型架构.png)
+![](src/模型架构.png)
 
 2.Refer to `idea/自适应图像色彩迁移方案.md`, the framework is as follows:
-![](/Users/maoyufeng/slash/project/filter4free/idea/src/model.png)
+![](src/model.png)
 
 #### 6.TODO
 
@@ -168,6 +200,10 @@ Use `neural networks` to fit various `camera filters` and `film colors`! The fol
 
 - A new unified color simulation scheme is studied, which includes two stages of Decoloring and Coloring. For details, refer to `idea/自适应图像色彩迁移方案.md` .
 
-3. 【24.07.4】
+4. 【24.07.4】
 
 - Added provia filter, support for click/drag upload image, support for model switching.
+
+5. 【24.09.20】
+- Offer onnx、TensorFlow、mlx、coreml model converting script.
+- Offer neural preset training script

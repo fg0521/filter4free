@@ -17,6 +17,7 @@
 - `【dir】idea`：理论研究
   - `src`：资源文件
 - `【dir】pack`：Nuitka打包文件
+- `【dir】script`：模型转换推理脚本
 - `train.py`：训练脚本
 - `train_new.py`：新的训练脚本
 - `dataset.py`：数据构造
@@ -29,53 +30,83 @@
 
 #### 3.模型权重
 ###### 负片去色罩
-1. `NegativeLabPro（NLP`）：**static/checkpoints/film-mask/best.pth** ✅️
+* [x] `NegativeLabPro（NLP`）：**static/checkpoints/film-mask/best.pth** 
 
 ###### 奥林巴斯色彩模拟
-1. `VIVID-浓郁色彩` ：**static/checkpoints/olympus/vivid/best.pth** ✅
-2. `SoftFocus-柔焦` ：❎
-3. ️`SoftLight-柔光` ：❎
-4. `Nostalgia-怀旧颗粒` ：❎
-5. `Stereoscopic-立体` ：❎
+* [x] `VIVID-浓郁色彩` ：**static/checkpoints/olympus/vivid/best.pth** 
+
+* [ ] `SoftFocus-柔焦` ：
+
+* [ ] `SoftLight-柔光` ：
+
+* [ ] `Nostalgia-怀旧颗粒` ：
+
+* [ ] `Stereoscopic-立体` ：
 
 ###### 富士色彩模拟
-1. `ACROS `：❎
-2. `CLASSIC CHROME` ：**static/checkpoints/fuji/classic-chrome/best.pth**✅
-3. `ETERNA `：❎
-4. `ETERNA BLEACH BYPASS `：❎
-5. `CLASSIC Neg. `：**static/checkpoints/fuji/classic-neg/best.pth**✅
-6. `PRO Neg.Hi `：❎
-7. `NOSTALGIC Neg.`：**static/checkpoints/fuji/nostalgic-neg/best.pth** ✅
-8. `PRO Neg.Std` ：❎
-9. `ASTIA `：❎
-10. `PROVIA`：**static/checkpoints/fuji/provia/best.pth** ✅
-11. `VELVIA`：**static/checkpoints/fuji/velvia/best.pth** ✅
-12. `Pro 400H`：**static/checkpoints/fuji/pro400h/best.pth** ✅
-13. `Superia 400`：**static/checkpoints/fuji/superia400/best.pth** ✅
+* [ ] `ACROS `：
+
+* [ ] `CLASSIC CHROME` ：**static/checkpoints/fuji/classic-chrome/best.pth**
+
+* [ ] `ETERNA `：
+
+* [ ] `ETERNA BLEACH BYPASS `：
+
+* [x] `CLASSIC Neg. `：**static/checkpoints/fuji/classic-neg/best.pth**
+
+* [ ] `PRO Neg.Hi `：
+
+* [x] `NOSTALGIC Neg.`：**static/checkpoints/fuji/nostalgic-neg/best.pth** 
+
+* [ ] `PRO Neg.Std` ：
+
+* [ ] `ASTIA `：
+
+* [x] `PROVIA`：**static/checkpoints/fuji/provia/best.pth** 
+
+* [x] `VELVIA`：**static/checkpoints/fuji/velvia/best.pth** 
+
+* [x] `Pro 400H`：**static/checkpoints/fuji/pro400h/best.pth** 
+
+* [x] `Superia 400`：**static/checkpoints/fuji/superia400/best.pth** 
 
 
 ###### 柯达色彩模拟
-1. `Color Plus`：**static/checkpoints/kodak/colorplus/best.pth** ✅
-2. `Gold 200`：**static/checkpoints/kodak/gold200/best.pth** ✅
-3. `Portra 400`：**static/checkpoints/kodak/portra400/best.pth** ✅
-4. `Portra 160NC`：**static/checkpoints/kodak/portra160nc/best.pth** ✅ 
-5. `UltraMax 400`：**static/checkpoints/kodak/ultramax400/best.pth** ✅
+* [x] `Color Plus`：**static/checkpoints/kodak/colorplus/best.pth** 
+
+* [x] `Gold 200`：**static/checkpoints/kodak/gold200/best.pth** 
+
+* [x] `Portra 400`：**static/checkpoints/kodak/portra400/best.pth** 
+
+* [x] `Portra 160NC`：**static/checkpoints/kodak/portra160nc/best.pth** 
+
+* [x] `UltraMax 400`：**static/checkpoints/kodak/ultramax400/best.pth** 
 
 ###### 理光色彩模拟
-1. `Std-标准` ：❎
-2. `Vivid-鲜艳` ：❎
-3. `Single-单色` ：❎
-4. `SoftSingle-软单色` ：❎
-5. `StiffSingle-硬单色` ：❎
-6. `ContrastSingle-高对比对黑白` ：❎
-7. `Neg-负片` ：❎
-8. `R-Pos-正片` ：❎
-9. `R-Nostalgia-怀旧` ：❎
-10. `R-HDR-HDR` ：❎
-11. `R-Pos2Neg-正负逆冲` ：❎
+* [ ] `Std-标准` ：
+
+* [ ] `Vivid-鲜艳` ：
+
+* [ ] `Single-单色` ：
+
+* [ ] `SoftSingle-软单色` ：
+
+* [ ] `StiffSingle-硬单色` ：
+
+* [ ] `ContrastSingle-高对比对黑白` ：
+
+* [ ] `Neg-负片` ：
+
+* [ ] `R-Pos-正片` ：
+
+* [ ] `R-Nostalgia-怀旧` ：
+
+* [ ] `R-HDR-HDR` ：
+
+* [ ] `R-Pos2Neg-正负逆冲` ：
 
 ###### 宝丽来色彩模拟
-1. `Polaroid`：**static/checkpoints/polaroid/best.pth** ✅
+* [x] `Polaroid`：**static/checkpoints/polaroid/best.pth** 
 
 ###### 索尼色彩模拟
 
@@ -121,19 +152,31 @@
 
 ![](src/comment.jpg)
 
+###### iPhone推理
+
+实现了将pytorch模型转换为coreml，在xcode上实现iPhone离线推理，12MP的图像推理时间为4s左右。但是目前没有开发app的想法（主要是不会，若有会ios开发的请联系我）
+
+![iphone](src/iphone.gif)
+
 #### 5.实验记录
 
 1.参考`idea/对比实验.md`，框架如下：
-![](idea/src/模型架构.png)
+![](src/模型架构.png)
 
 2.参考`idea/自适应图像色彩迁移方案.md`，框架如下：
-![](idea/src/model.png)
+![](src/model.png)
 
 #### 6.未来计划
 
-1.收集相关图像数据训练更多类型胶片模拟 ❎
+* [ ] 1.收集相关图像数据训练更多类型胶片模拟 
 
-2.尝试统一所有设备（iphone/安卓/佳能/尼康等相机）到胶片模拟的映射 ✅
+* [x] 2.尝试统一所有设备（iphone/安卓/佳能/尼康等相机）到胶片模拟的映射 
+
+* [x] 3.移植到iPhone推理
+* [x] 支持onnx推理
+* [x] 支持coreml推理
+* [x] 支持TensorFlow推理
+* [x] 支持mlx训练推理
 
 #### 7.更新日志
 
@@ -153,9 +196,13 @@
 
 - 新研究了一种统一的色彩模拟方案，包括`去色`和`上色`两个阶段，详情参考`idea/自适应图像色彩迁移方案.md`
 
-3. 【24.07.4】
+4. 【24.07.4】
 
 - 新增provia滤镜，支持点击/拖拽上传图像，支持模型切换
+
+5. 【24.09.20】
+- 提供onnx、TensorFlow、mlx、coreml等模型的转换脚本
+- 提供neural preset训练脚本
 
 #### 8.用户提问
 

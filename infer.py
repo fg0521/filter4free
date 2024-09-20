@@ -8,8 +8,9 @@ import numpy as np
 import torch
 from PIL import Image
 from torchvision import transforms
-from models import UNet, FilterSimulation4
+from models import UNet, FilterSimulation4, UCM, Shader,Encoder
 from tqdm import tqdm
+
 from utils import color_shift, to_pil
 
 seed = 2333
@@ -26,31 +27,41 @@ best-v4                 FilterSimulation4
 best                    UNet
 
 """
+transform  = transforms.Compose([
+            transforms.Resize((256, 256)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+transform2  = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+
+def normalize(array):
+    return (array - np.array([0.485, 0.456, 0.406])) / np.array([0.229, 0.224, 0.225])
+
+def unnormalize(array):
+    return (array - np.array([-2.12, -2.04, -1.80])) / np.array([4.36, 4.46, 4.44])
 
 
 def image2block(image, patch_size=448, padding=16, norm=True):
     patches = []
-    # 转换为tensor
     image = image / 255.0
-    if norm:
-        mean = np.array([0.485, 0.456, 0.406])
-        std = np.array([0.229, 0.224, 0.225])
-        image = (image - mean) / std  # 归一化
-    image = torch.from_numpy(image).float()
-    image = image.permute(2, 0, 1)  # c h w
-
-    _, H, W = image.shape
-    # 上侧、左侧填充padding  右侧和下侧需要计算
+    image = normalize(image) if norm else image
+    # 获取图像的高和宽
+    H, W, C = image.shape
+    # 计算右侧和下侧的填充量
     right_padding = padding if W % patch_size == 0 else padding + patch_size - (W % patch_size)
     bottom_padding = padding if H % patch_size == 0 else padding + patch_size - (H % patch_size)
-    image = F.pad(image, (padding, right_padding, padding, bottom_padding), mode='replicate')
-    row = (image.shape[1] - 2 * padding) // patch_size
-    col = (image.shape[2] - 2 * padding) // patch_size
-    # 从左到右 从上到下
-    for y1 in range(padding, row * patch_size, patch_size):
-        for x1 in range(padding, col * patch_size, patch_size):
-            patch = image[:, y1 - padding:y1 + patch_size + padding, x1 - padding:x1 + patch_size + padding]
-            patch = patch.unsqueeze(0)
+    # 填充图像
+    padded_image = np.pad(image, ((padding, bottom_padding), (padding, right_padding), (0, 0)), mode='edge')
+    row = (padded_image.shape[0] - 2 * padding) // patch_size
+    col = (padded_image.shape[1] - 2 * padding) // patch_size
+    # 生成patches
+    for y1 in range(padding, row * patch_size + padding, patch_size):
+        for x1 in range(padding, col * patch_size + padding, patch_size):
+            patch = padded_image[y1 - padding:y1 + patch_size + padding, x1 - padding:x1 + patch_size + padding]
+            patch = np.expand_dims(patch.transpose(2, 0, 1), 0).astype(np.float32)
             patches.append(patch)
     return patches, row, col
 
@@ -63,8 +74,9 @@ def infer(image, model, device, patch_size=448, batch=8, padding=16, norm=True):
     target = torch.zeros((row * patch_size, col * patch_size, channel), dtype=torch.float)
     with torch.no_grad():
         for i in tqdm(range(0, len(split_images), batch)):
-            batch_input = torch.cat(split_images[i:i + batch], dim=0)
-            batch_output = model(batch_input.to(device))
+            # batch_input = torch.cat(split_images[i:i + batch], dim=0).to(device)
+            batch_input = torch.from_numpy(np.vstack(split_images[i:i + batch])).to(device)
+            batch_output = model(batch_input)
             batch_output = batch_output[:, :, padding:-padding, padding:-padding].permute(0, 2, 3, 1).cpu()
             for j, output in enumerate(batch_output):
                 y = (i + j) // col * patch_size
@@ -72,9 +84,7 @@ def infer(image, model, device, patch_size=448, batch=8, padding=16, norm=True):
                 target[y:y + patch_size, x:x + patch_size] = output
     target = target[:img.shape[0], :img.shape[1]].numpy()
     if norm:
-        mean = np.array([-2.12, -2.04, -1.80])
-        std = np.array([4.36, 4.46, 4.44])
-        target = (target - mean) / std
+        target = unnormalize(target)
     target = np.clip(target * 255, a_min=0, a_max=255).astype(np.uint8)
     target = cv2.cvtColor(target, cv2.COLOR_RGB2BGR)
     return target
@@ -157,8 +167,114 @@ def compare_model():
     print(f"【Model UNet】\tcost:{sum(speed2) / len(speed2)}s\tloss:{sum(loss2) / len(loss2)}")
 
 
-if __name__ == '__main__':
 
+def image2block2(image, patch_size=448, padding=16):
+    patches = []
+    _, H, W = image.shape
+    # 上侧、左侧填充padding  右侧和下侧需要计算
+    right_padding = padding if W % patch_size == 0 else padding + patch_size - (W % patch_size)
+    bottom_padding = padding if H % patch_size == 0 else padding + patch_size - (H % patch_size)
+    image = F.pad(image, (padding, right_padding, padding, bottom_padding), mode='replicate')
+    row = (image.shape[1] - 2 * padding) // patch_size
+    col = (image.shape[2] - 2 * padding) // patch_size
+    # 从左到右 从上到下
+    for y1 in range(padding, row * patch_size, patch_size):
+        for x1 in range(padding, col * patch_size, patch_size):
+            patch = image[:, y1 - padding:y1 + patch_size + padding, x1 - padding:x1 + patch_size + padding]
+            patch = patch.unsqueeze(0)
+            patches.append(patch)
+    return patches, row, col
+
+def infer2(tgt,checkpoint,src=None,patch_size=240, batch=8, padding=8, norm=True):
+    """
+    :param image:
+    :param checkpoint:
+    :param filter_image:
+    :param patch_size:
+    :param batch:
+    :param padding:
+    :param norm:
+    :return:
+    """
+    if torch.cuda.is_available():
+        device = torch.device('cuda:0')
+    # elif torch.backends.mps.is_available():
+    #     device = torch.device('mps')
+    else:
+        device = torch.device('cpu')
+    pth = torch.load(checkpoint,map_location=device)
+    encoder = Encoder()
+    sNet = Shader()
+    cNet = Shader()
+    encoder.load_state_dict(pth['encoder'])
+    sNet.load_state_dict(pth['sNet'])
+    cNet.load_state_dict(pth['cNet'])
+    encoder.eval()
+    sNet.eval()
+    cNet.eval()
+    encoder.to(device)
+    sNet.to(device)
+    cNet.to(device)
+
+    tgt_img_cp = Image.open(tgt).convert('RGB')
+    tgt_img_cp = transform2(tgt_img_cp)
+    tgt_img = tgt_img_cp.unsqueeze(0)
+    tgt_img = tgt_img.to(device)
+
+    # 使用预设的lut进行推理
+    if src is None:
+        filter_color = pth['filter_color']
+        # with torch.no_grad():
+        #     d, _ = encoder(tgt_img)
+
+    # 使用选中的图像进行提取lut再推理
+    elif src is not None:
+        src_img = Image.open(src).convert('RGB')
+        src_img = transform2(src_img)
+        src_img = src_img.unsqueeze(0)
+        src_img = src_img.to(device)
+        with torch.no_grad():
+            _, filter_color = encoder(src_img)
+            d, _ = encoder(tgt_img)
+    else:
+        print('Have No LUT For Inference...')
+    split_images, row, col = image2block2(tgt_img_cp, patch_size=patch_size, padding=padding)
+    target = Image.new(mode='RGB',size=(row * patch_size, col * patch_size))
+    content = Image.new(mode='RGB',size=(row * patch_size, col * patch_size))
+    with torch.no_grad():
+        for i in tqdm(range(0, len(split_images), batch)):
+            batch_input = torch.cat(split_images[i:i + batch], dim=0)
+            batch_input = batch_input.to(device)
+            bs = batch_input.shape[0]
+            r = filter_color.repeat(bs, 1, 1, 1)
+            # _, r = encoder(batch_input)
+            # d = d.repeat(bs,1,1,1)
+            d, _ = encoder(batch_input)
+            struct = sNet(batch_input, d)
+            color = cNet(struct, r)
+            for j in range(bs):
+                y = (i + j) // col * patch_size
+                x = (i + j) % col * patch_size
+                target.paste(im=to_pil(color[j, :, :, :]),box=(x,y))
+                content.paste(im=to_pil(struct[j, :, :, :]),box=(x,y))
+                # content[y:y + patch_size, x:x + patch_size] = to_pil(struct[j:j + 1, :, :, :])
+    # target = target[:tgt_img_cp.shape[0], :tgt_img_cp.shape[1]].numpy()
+    # content = content[:tgt_img_cp.shape[0], :tgt_img_cp.shape[1]].numpy()
+    # if norm:
+    #     target = normalize(target)
+        # content = normalize(content)
+    # target = np.clip(target * 255, a_min=0, a_max=255).astype(np.uint8)
+    # content = np.clip(content * 255, a_min=0, a_max=255).astype(np.uint8)
+    # target = cv2.cvtColor(target, cv2.COLOR_RGB2BGR)
+    # content = cv2.cvtColor(content, cv2.COLOR_RGB2BGR)
+    target.save('output.jpg', quality=100)
+    content.save('content.jpg', quality=100)
+
+
+
+
+
+if __name__ == '__main__':
     model_list = {
         'UNet': {'model': UNet(), 'pth': 'best.pth'},
         'FilterSimulation': {'model': FilterSimulation4(), 'pth': 'best-v4.pth'}
@@ -174,18 +290,22 @@ if __name__ == '__main__':
     model_name = 'FilterSimulation'
     model = model_list[model_name]['model']
     # model = FilterSimulation2iPhone()
-    pth = torch.load(f'static/checkpoints/olympus/vivid/best-v4.pth', map_location=device)
+    pth = torch.load(f'pack/static/checkpoints/fuji/classic-neg/best-v4.pth', map_location=device)
     model.load_state_dict(pth)
     model.to(device)
     model.eval()
     st = time.time()
-    target = infer(image=f'/Users/maoyufeng/Downloads/63537EC1-9154-42B6-BE60-BC3C8DA6DFA1.jpeg',
+    target = infer(image=f'/Users/maoyufeng/Downloads/iShot_2024-08-28_17.39.31.jpg',
                    model=model,
                    device=device,
                    padding=8,
                    patch_size=640,
+                   # norm=False
                    )
     print(time.time() - st)
     cv2.imwrite(f'/Users/maoyufeng/Downloads/output-pytorch.jpg', target, [cv2.IMWRITE_JPEG_QUALITY, 100])
 
     # compare_model()
+
+    # infer2(tgt='/Users/maoyufeng/Downloads/iShot_2024-08-28_17.39.31.jpg',
+    #           checkpoint='test_checkpoint/val_loss_0.35.pth')
