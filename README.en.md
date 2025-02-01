@@ -1,4 +1,4 @@
-<center><h1>FilmSimulation</h1></center>
+<center><h1>AI Film Simulation</h1></center>
 
 <center>
   <h6>
@@ -33,10 +33,10 @@ Use `neural networks` to fit various `camera filters` and `film colors`! The fol
 
 ###### Negative color mask
 
-* [x] `NegativeLabPro（NLP`）：**static/checkpoints/film-mask/best.pth** 
+* [x] `NegativeLabPro（NLP`）：**static/checkpoints/film-mask** 
 
 ###### Olympus Film
-* [x] `VIVID-浓郁色彩` ：**static/checkpoints/olympus/vivid/best.pth** 
+* [x] `VIVID-浓郁色彩` ：**static/checkpoints/olympus/vivid** 
 
 * [ ] `SoftFocus-柔焦` ：
 
@@ -47,42 +47,42 @@ Use `neural networks` to fit various `camera filters` and `film colors`! The fol
 * [ ] `Stereoscopic-立体` ：
 
 ###### Fuji Film
-* [ ] `ACROS `：
+* [x] `ACROS `：**static/checkpoints/fuji/acros**
 
-* [ ] `CLASSIC CHROME` ：**static/checkpoints/fuji/classic-chrome/best.pth**
+* [x] `CLASSIC CHROME` ：**static/checkpoints/fuji/classic-chrome**
 
-* [ ] `ETERNA `：
+* [x] `ETERNA `：**static/checkpoints/fuji/enerna** 
 
-* [ ] `ETERNA BLEACH BYPASS `：
+* [x] `ETERNA BLEACH BYPASS `：**static/checkpoints/fuji/eb** 
 
-* [x] `CLASSIC Neg. `：**static/checkpoints/fuji/classic-neg/best.pth**
+* [x] `CLASSIC Neg. `：**static/checkpoints/fuji/classic-neg**
 
-* [ ] `PRO Neg.Hi `：
+* [x] `PRO Neg.Hi `：**static/checkpoints/fuji/negstdhi** 
 
-* [x] `NOSTALGIC Neg.`：**static/checkpoints/fuji/nostalgic-neg/best.pth** 
+* [x] `NOSTALGIC Neg.`：**static/checkpoints/fuji/nostalgic-neg** 
 
-* [ ] `PRO Neg.Std` ：
+* [x] `PRO Neg.Std` ：**static/checkpoints/fuji/negstd** 
 
-* [ ] `ASTIA `：
+* [x] `ASTIA `：**static/checkpoints/fuji/astia** 
 
-* [x] `PROVIA`：**static/checkpoints/fuji/provia/best.pth** 
+* [x] `PROVIA`：**static/checkpoints/fuji/provia** 
 
-* [x] `VELVIA`：**static/checkpoints/fuji/velvia/best.pth** 
+* [x] `VELVIA`：**static/checkpoints/fuji/velvia** 
 
-* [x] `Pro 400H`：**static/checkpoints/fuji/pro400h/best.pth** 
+* [x] `Pro 400H`：**static/checkpoints/fuji/pro400h** 
 
-* [x] `Superia 400`：**static/checkpoints/fuji/superia400/best.pth**
+* [x] `Superia 400`：**static/checkpoints/fuji/superia400**
 
 ###### Kodak Film
-* [x] `Color Plus`：**static/checkpoints/kodak/colorplus/best.pth** 
+* [x] `Color Plus`：**static/checkpoints/kodak/colorplus** 
 
-* [x] `Gold 200`：**static/checkpoints/kodak/gold200/best.pth** 
+* [x] `Gold 200`：**static/checkpoints/kodak/gold200** 
 
-* [x] `Portra 400`：**static/checkpoints/kodak/portra400/best.pth** 
+* [x] `Portra 400`：**static/checkpoints/kodak/portra400** 
 
-* [x] `Portra 160NC`：**static/checkpoints/kodak/portra160nc/best.pth** 
+* [x] `Portra 160NC`：**static/checkpoints/kodak/portra160nc** 
 
-* [x] `UltraMax 400`：**static/checkpoints/kodak/ultramax400/best.pth** 
+* [x] `UltraMax 400`：**static/checkpoints/kodak/ultramax400** 
 
 ###### Rochi Film
 * [ ] `Std-标准` ：
@@ -109,7 +109,7 @@ Use `neural networks` to fit various `camera filters` and `film colors`! The fol
 
 ###### Polaroid Film
 
-* [x] `Polaroid`：**static/checkpoints/polaroid/best.pth** 
+* [x] `Polaroid`：**static/checkpoints/polaroid** 
 
 ###### Sony Film
 
@@ -123,9 +123,11 @@ Use `neural networks` to fit various `camera filters` and `film colors`! The fol
 
 | Model            | Checkpoint   |
 | ---------------- | ------------ |
-| FilterSimulation | best-v4      |
-| UNet             | best.pth     |
+| FilterSimulation | filmcnn.pth  |
+| UNet             | unet.pth     |
 | UCM              | best-ucm.pth |
+
+**Notice: use unet model can get more details**
 
 #### 4.Usage
 
@@ -158,29 +160,35 @@ Use `neural networks` to fit various `camera filters` and `film colors`! The fol
 
 3. run `AIFilter.app` or move to `application`.
 
-###### GUI
+###### GUI(New design)
 
-![](src/comment.jpg)
+![](idea/app.jpg)
 
 ###### iPhone inference
 
 convert pytorch to coreml，and infer on iphone14 pro, cost 4s when inferring a 12M image.
 
-![iphone](src/iphone.gif)
+![iphone](idea/iphone.gif)
 
 #### 5.Experimental Record
 
 1.Refer to `idea/对比实验.md`, the framework is as follows:
-![](src/模型架构.png)
+![](idea/FilterSimulation.png)
 
 2.Refer to `idea/自适应图像色彩迁移方案.md`, the framework is as follows:
-![](src/model.png)
+![](idea/model.png)
 
 #### 6.TODO
 
-1.Collect relevant image data to train more types of film simulations ❎
+* [ ] Collect relevant image data to train more types of film simulations
 
-2.Try to unify the mapping from all devices (iphone/ Android/Canon/Nikon, etc.) to film simulation✅
+* [x] Try to unify the mapping from all devices (iphone/ Android/Canon/Nikon, etc.) to film simulation
+
+* [x] Porting to iPhone Inference
+* [x] Supports onnx inference
+* [x] Supports coreml inference
+* [x] Supports TensorFlow inference
+* [x] Supports  mlx inference
 
 #### 7.Update
 
@@ -205,5 +213,16 @@ convert pytorch to coreml，and infer on iphone14 pro, cost 4s when inferring a 
 - Added provia filter, support for click/drag upload image, support for model switching.
 
 5. 【24.09.20】
+
 - Offer onnx、TensorFlow、mlx、coreml model converting script.
+
 - Offer neural preset training script
+
+6. 【25.01.31】
+- Redesign the interface
+
+- New Brand selection button
+
+- Complete all film model training at Fuji
+
+- Support raw formate：HEIF、RAF、CR2、CR3、RW2、DNG、PEF、ARW

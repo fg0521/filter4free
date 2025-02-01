@@ -330,17 +330,17 @@ if __name__ == '__main__':
         device = torch.device('mps')
     else:
         device = torch.device('cpu')
-    pth = torch.load('pretrained_model/pretrained_model.pth')
-    pth1 = pth['sNet']
-    pth2 = pth['cNet']
-    pth3 = pth['encoder']
+    # pth = torch.load('pretrained_model/pretrained_model.pth')
+    # pth1 = pth['sNet']
+    # pth2 = pth['cNet']
+    # pth3 = pth['encoder']
     # filter_color = pth["org_color"]
     encoder = Encoder()
-    encoder.load_state_dict(pth3)
+    # encoder.load_state_dict(pth3)
     sNet = Shader()
-    sNet.load_state_dict(pth1)
+    # sNet.load_state_dict(pth1)
     cNet = Shader()
-    cNet.load_state_dict(pth2)
+    # cNet.load_state_dict(pth2)
     encoder.eval()
     sNet.eval()
     cNet.eval()
@@ -351,10 +351,10 @@ if __name__ == '__main__':
     img_train, img_val = [], []
 
     for name in ['classic-neg']:
-        train_path = '/Users/maoyufeng/slash/dataset/train_dataset/classic-neg/train'
-        val_path = '/Users/maoyufeng/slash/dataset/train_dataset/classic-neg/val'
-        # train_path = f'/home/dlwork01/slash/{name}/train'
-        # val_path = f'/home/dlwork01/slash/{name}/val'
+        # train_path = '/Users/maoyufeng/slash/dataset/train_dataset/classic-neg/train'
+        # val_path = '/Users/maoyufeng/slash/dataset/train_dataset/classic-neg/val'
+        train_path = f'/home/dlwork01/slash/{name}/train'
+        val_path = f'/home/dlwork01/slash/{name}/val'
         for im in os.listdir(train_path):
             if im.endswith('_org.jpg'):
                 img_train.append((os.path.join(train_path, im),
@@ -384,7 +384,7 @@ if __name__ == '__main__':
         resume=False,
     )
 
-    train(train_dataloader, val_dataloader, num_epochs=32, learning_rate=1e-4, save_path='pretrained_model', filter_num=1)
+    train(train_dataloader, val_dataloader, num_epochs=100, learning_rate=3e-4, save_path='pretrained_model')
 
     # inference(image='/Users/maoyufeng/slash/dataset/org_dataset/classic-neg/DSCF5713_org.jpg',
     #           filter=filter_color)
